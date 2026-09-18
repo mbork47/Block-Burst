@@ -56,9 +56,10 @@ var SHAPE_DEFS = [
   {s:[[0,0],[1,0],[1,1],[1,2]],w:4},{s:[[0,2],[1,0],[1,1],[1,2]],w:4},
   {s:[[0,0],[0,1],[0,2],[1,0]],w:4},{s:[[0,0],[0,1],[0,2],[1,2]],w:4},
   {s:[[0,0],[1,0],[1,1]],w:4},{s:[[0,0],[0,1],[1,0]],w:4},
-  {s:[[0,1],[1,0],[1,1]],w:4},{s:[[0,0],[0,1],[1,1]],w:4},
-  {s:[[0,0],[0,1],[0,2],[0,3],[0,4]],w:1},
-  {s:[[0,0],[1,0],[2,0],[3,0],[4,0]],w:1}
+  {s:[[0,1],[1,0],[1,61]],w:4},{s:[[0,,0],[0,1],[1,1182]],w:4},
+  {s,:[[0,0],[0212,1],[0,,2],[0,30],[0,4]],.w:1},
+  {s4:[[0,0],[)'1,0],[2,0],[3, },
+0],[4,0]],w:1 }
 ];
 var POOL = [];
 for (var di=0; di<SHAPE_DEFS.length; di++){
@@ -78,8 +79,7 @@ var THEMES = {
   ocean:{ name:'OCEAN', bg1:'#041a2e', bg2:'#020a14',
     panel:'rgba(255,255,255,0.05)', panelBorder:'rgba(100,200,255,0.12)',
     cell:'rgba(100,200,255,0.05)', text:'#ffffff', dim:'rgba(150,220,255,0.4)',
-    accent:'#06b6d4', accent2:'#22d3ee', glow:'rgba(6,182,212,0.4)' },
-  forest:{ name:'FOREST', bg1:'#0a1f14', bg2:'#040a08',
+    accent:'#06b6d4', accent2:'#22d3ee', glow:'rgba( forest:{ name:'FOREST', bg1:'#0a1f14', bg2:'#040a08',
     panel:'rgba(255,255,255,0.05)', panelBorder:'rgba(100,255,150,0.12)',
     cell:'rgba(100,255,150,0.05)', text:'#ffffff', dim:'rgba(180,255,200,0.4)',
     accent:'#10b981', accent2:'#34d399', glow:'rgba(16,185,129,0.4)' },
@@ -105,6 +105,83 @@ var toastMsg=null, toastStart=0;
 
 var STATE = 'menu';
 var buttons = {};
+
+/* ============================================================
+   BLOK ÖNBELLEĞİ — performans için
+   ============================================================ */
+var blockCache = {};
+var boardBgCache = null;
+var trayBgCache = null;
+var vignetteCache = null;
+
+function getBlockSprite(color, size){
+  var key = color + '_' + Math.round(size);
+  if (blockCache[key]) return blockCache[key];
+  var s2 = Math.ceil(size);
+  var c = document.createElement('canvas');
+  c.width = s2;
+  c.height = s2;
+  var cx = c.getContext('2d');
+  drawBlockRaw(cx, 0, 0, s2, color);
+  blockCache[key] = c;
+  return c;
+}
+
+function drawBlockRaw(c, x, y, size, color){
+  var gap = Math.max(1, size*0.045);
+  var s = size-gap*2;
+  if (s <= 0) return;
+  var rad = s*0.30;
+  var bx = x+gap, by = y+gap;
+
+  var g = c.createLinearGradient(bx, by, bx, by+s);
+  g.addColorStop(0, lighten(color, 0.30));
+  g.addColorStop(0.5, color);
+  g.addColorStop(1, darken(color, 0.20));
+  c.fillStyle = g;
+  roundRectC(c, bx, by, s, s, rad);
+  c.fill();
+
+  var gd = c.createLinearGradient(bx, by+s*0.55, bx, by+s);
+  gd.addColorStop(0, 'rgba(0,0,0,0)');
+  gd.addColorStop(1, 'rgba(0,0,0,0.16)');
+  c.fillStyle = gd;
+  roundRectC(c, bx, by, s, s, rad);
+  c.fill();
+
+  c.fillStyle = 'rgba(255,255,255,0.55)';
+  roundRectC(c, bx+s*0.14, by+s*0.1, s*0.72, s*0.3, s*0.15);
+  c.fill();
+
+  c.fillStyle = 'rgba(255,255,255,0.4)';
+  roundRectC(c, bx+s*0.35, by+s*0.16, s*0.3, s*0.07, s*0.035);
+  c.fill();
+
+  c.strokeStyle = 'rgba(255,255,255,0.22)';
+  c.lineWidth = Math.max(1, s*0.018);
+  roundRectC(c, bx+s*0.02, by+s*0.02, s-s*0.04, s-s*0.04, rad*0.95);
+  c.stroke();
+}
+
+function roundRectC(c, x, y, w, h, r){
+  if (!isFinite(x)||!isFinite(y)||!isFinite(w)||!isFinite(h)) return;
+  if (r<0) r=0;
+  var rr=Math.min(r,w/2,h/2);
+  c.beginPath();
+  c.moveTo(x+rr,y);
+  c.arcTo(x+w,y,x+w,y+h,rr);
+  c.arcTo(x+w,y+h,x,y+h,rr);
+  c.arcTo(x,y+h,x,y,rr);
+  c.arcTo(x,y,x+w,y,rr);
+  c.closePath();
+}
+
+function clearBlockCache(){
+  blockCache = {};
+  boardBgCache = null;
+  trayBgCache = null;
+  vignetteCache = null;
+}
 
 var SAVE_KEY='blokSave_v8';
 var save = {
@@ -223,12 +300,12 @@ var Sfx = {
       var t = i * 0.055;
       layer(f, 0.14, 'triangle', 0.075, t, {attack:0.005});
       layer(f*2, 0.1, 'sine', 0.025, t, {attack:0.005});
-      layer(f*4, 0.06, 'sine', 0.012, t+0.01);
+      layer(f*4, 0.06, 'sawine', 0.012, t+0to.01);
     }
   },
-  levelUp: function(){
-    if (!save.soundOn) return;
-    var notes = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1568];
+  levelUp:oth function(){
+    if (!save.soundOn)', return;
+    var notes = [523.25 , 659.25, 783.99,0 1046.5, 1318.5, 1568];
     for (var i=0;i<notes.length;i++){
       var t = i*0.09;
       layer(notes[i], 0.4, 'triangle', 0.08, t, {attack:0.01});
@@ -243,7 +320,7 @@ var Sfx = {
       var t = i*0.16;
       layer(notes[i], 0.3, 'sawtooth', 0.055, t, {filter:'lowpass', filterFreq:1400, attack:0.015});
       layer(notes[i]*0.5, 0.35, 'sine', 0.04, t, {attack:0.015});
-      layer(notes[i], 0.3, 'sawtooth', 0.02, t, {detune: 8, filter:'lowpass', filterFreq:1400});
+      layer(notes[i], 0.3, 's.02, t, {detune: 8, filter:'lowpass', filterFreq:1400});
     }
   },
   click: function(){
@@ -282,31 +359,26 @@ function startMusic(){
     if (s % 2 === 0){
       layer(8000, 0.02, 'square', 0.008, 0, {filter:'highpass', filterFreq:6000});
     }
-
     if (s === 0){
       layer(bass, 1.6, 'sine', 0.08, 0, {attack:0.02});
       layer(bass/2, 1.8, 'triangle', 0.04, 0, {attack:0.03});
     }
-
     if (s === 0){
       for (var i=0;i<chord.length;i++){
         layer(chord[i], 2.8, 'sine', 0.018, 0, {attack:0.3});
         layer(chord[i]*2, 2.4, 'triangle', 0.006, 0, {detune: 5, attack:0.3});
       }
     }
-
     if (melodySteps.indexOf(s) >= 0){
       var idx = (musicStep16 * 7 + s * 3) % melodyNotes.length;
       var note = melodyNotes[idx];
       layer(note, 0.6, 'triangle', 0.045, 0, {attack:0.02});
       layer(note*2, 0.4, 'sine', 0.012, 0, {attack:0.02});
     }
-
     if (s % 2 === 1){
       var arpNote = chord[(s/2|0) % chord.length] * 2;
       layer(arpNote, 0.25, 'sine', 0.012, 0, {attack:0.01});
     }
-
     musicStep16++;
   };
   step();
@@ -355,33 +427,20 @@ function roundRect(x,y,w,h,r){
 
 function drawGlassPanel(x,y,w,h,r){
   var th = T();
-  ctx.save();
-  ctx.shadowColor='rgba(0,0,0,0.35)';
-  ctx.shadowBlur=20;
-  ctx.shadowOffsetY=8;
   ctx.fillStyle = th.panel;
   roundRect(x,y,w,h,r);
   ctx.fill();
-  ctx.shadowColor='transparent';
-  ctx.shadowBlur=0;
-  ctx.shadowOffsetY=0;
   ctx.strokeStyle = th.panelBorder;
   ctx.lineWidth = 1;
   roundRect(x,y,w,h,r);
   ctx.stroke();
-  ctx.restore();
 }
 
+/* HIZLI drawBlock — önbellekten kopyalar */
 function drawBlock(x,y,size,color,opts){
   if (!isFinite(x)||!isFinite(y)||!isFinite(size)||size<=0.5) return;
-  opts = opts||{};
-  var gap = Math.max(1, size*0.045);
-  var s = size-gap*2;
-  if (!isFinite(s)||s<=0) return;
-  var rad = s*0.30;
-  var bx = x+gap, by = y+gap;
-
-  if (opts.shadow || opts.glow){
+  // Özel efekt varsa yavaş yolu kullan
+  if (opts && (opts.glow || opts.shadow)){
     ctx.save();
     if (opts.glow){
       ctx.shadowColor = color;
@@ -391,39 +450,13 @@ function drawBlock(x,y,size,color,opts){
       ctx.shadowBlur = opts.shadow;
       ctx.shadowOffsetY = opts.shadow*0.3;
     }
-    ctx.fillStyle = color;
-    roundRect(bx, by, s, s, rad);
-    ctx.fill();
+    var spriteS = getBlockSprite(color, size);
+    ctx.drawImage(spriteS, x, y, size, size);
     ctx.restore();
+    return;
   }
-
-  var g = ctx.createLinearGradient(bx, by, bx, by+s);
-  g.addColorStop(0, lighten(color, 0.30));
-  g.addColorStop(0.5, color);
-  g.addColorStop(1, darken(color, 0.20));
-  ctx.fillStyle = g;
-  roundRect(bx, by, s, s, rad);
-  ctx.fill();
-
-  var gd = ctx.createLinearGradient(bx, by+s*0.55, bx, by+s);
-  gd.addColorStop(0, 'rgba(0,0,0,0)');
-  gd.addColorStop(1, 'rgba(0,0,0,0.16)');
-  ctx.fillStyle = gd;
-  roundRect(bx, by, s, s, rad);
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  roundRect(bx+s*0.14, by+s*0.1, s*0.72, s*0.3, s*0.15);
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  roundRect(bx+s*0.35, by+s*0.16, s*0.3, s*0.07, s*0.035);
-  ctx.fill();
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-  ctx.lineWidth = Math.max(1, s*0.018);
-  roundRect(bx+s*0.02, by+s*0.02, s-s*0.04, s-s*0.04, rad*0.95);
-  ctx.stroke();
+  var sprite = getBlockSprite(color, size);
+  ctx.drawImage(sprite, x, y, size, size);
 }
 
 function drawButton(b, label, color, textColor, fontSize){
@@ -496,7 +529,7 @@ function resize(){
   boardY = hudH + Math.max(0, (availH-boardSize)/2);
   LIFT = cell*0.08;
   layoutTray();
-  initBgParticles();
+  clearBlockCache();
 }
 
 function layoutTray(){
@@ -549,12 +582,12 @@ function findLines(){
 
 function spawnParticles(x,y,size,color){
   var rgb = hexToRgb(color);
-  for (var i=0;i<7;i++){
+  for (var i=0;i<5;i++){
     var ang=Math.random()*Math.PI*2;
     var spd=2+Math.random()*4;
     particles.push({ x:x+size/2, y:y+size/2,
       vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-2.5,
-      life:1, decay:0.022+Math.random()*0.02,
+      life:1, decay:0.025+Math.random()*0.02,
       size:size*0.1+Math.random()*size*0.16,
       color: Math.random()<0.5 ? lighten(color,0.4) : 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')' });
   }
@@ -564,7 +597,7 @@ function addVanishing(x,y,color){ vanishing.push({x:x,y:y,color:color,start:now,
 function addPulse(x,y,color){ pulses.push({x:x,y:y,color:color,start:now,dur:380}); }
 function spawnConfetti(){
   var colors = ['#ff7b8a','#5fd3c4','#ffc94d','#8ee0b4','#b98df2','#ffa676','#7bc8ec','#f48fbb'];
-  for (var i=0;i<80;i++){
+  for (var i=0;i<50;i++){
     confetti.push({
       x: W/2 + (Math.random()-0.5)*W*0.6,
       y: H*0.3 + (Math.random()-0.5)*H*0.2,
@@ -615,7 +648,7 @@ function drawEffects(){
     if (t>=1) continue;
     size=cell*(1-t*0.6); off=(cell-size)/2;
     ctx.globalAlpha=1-t;
-    drawBlock(v.x+off, v.y+off, size, v.color, {glow: 20*(1-t)});
+    drawBlock(v.x+off, v.y+off, size, v.color);
   }
   ctx.globalAlpha=1;
   for (i=0;i<pulses.length;i++){
@@ -671,39 +704,35 @@ function drawEffects(){
 var bgParticles = [];
 function initBgParticles(){
   bgParticles = [];
-  for (var i=0;i<24;i++){
+  for (var i=0;i<10;i++){
     bgParticles.push({
       x: Math.random()*W,
       y: Math.random()*H,
-      r: 20 + Math.random()*80,
+      r: 30 + Math.random()*80,
       speed: 0.08 + Math.random()*0.2,
       angle: Math.random()*Math.PI*2,
-      hue: Math.random(),
-      alpha: 0.04 + Math.random()*0.07
+      hue: Math.random()
     });
   }
 }
-if (!bgParticles.length) initBgParticles();
+initBgParticles();
+
+function buildBgCache(){
+  // Arkaplan parçacıklarını sprite olarak saklayalım
+  // ama basit tutmak için direkt çizeceğiz
+}
 
 function drawBackground(){
   var th = T();
-  var t = now*0.001;
-  var rgb = hexToRgb(th.accent);
-  var rgb2 = hexToRgb(th.accent2);
-
-  var shift = Math.sin(t*0.15)*0.1;
-  var bg = ctx.createLinearGradient(0, H*shift, 0, H*(1+shift));
+  var bg = ctx.createLinearGradient(0,0,0,H);
   bg.addColorStop(0, th.bg1);
   bg.addColorStop(1, th.bg2);
   ctx.fillStyle=bg;
   ctx.fillRect(0,0,W,H);
 
-  var waveY = (Math.sin(t*0.4)*0.5 + 0.5) * H;
-  var waveG = ctx.createRadialGradient(W/2, waveY, 0, W/2, waveY, Math.min(W,H)*0.9);
-  waveG.addColorStop(0, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.12)');
-  waveG.addColorStop(1, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0)');
-  ctx.fillStyle = waveG;
-  ctx.fillRect(0,0,W,H);
+  var rgb = hexToRgb(th.accent);
+  var rgb2 = hexToRgb(th.accent2);
+  var t = now*0.001;
 
   for (var i=0;i<bgParticles.length;i++){
     var p = bgParticles[i];
@@ -715,25 +744,13 @@ function drawBackground(){
     if (p.x < -p.r) p.x = W + p.r;
     if (p.x > W + p.r) p.x = -p.r;
 
-    var px = p.x + Math.sin(t*0.5 + i)*8;
-    var py = p.y;
-
     var c = p.hue < 0.5 ? rgb : rgb2;
-    var g = ctx.createRadialGradient(px, py, 0, px, py, p.r);
-    g.addColorStop(0, 'rgba('+c[0]+','+c[1]+','+c[2]+','+p.alpha+')');
-    g.addColorStop(0.6, 'rgba('+c[0]+','+c[1]+','+c[2]+','+(p.alpha*0.4)+')');
-    g.addColorStop(1, 'rgba('+c[0]+','+c[1]+','+c[2]+',0)');
-    ctx.fillStyle = g;
+    var alpha = 0.06;
+    ctx.fillStyle = 'rgba('+c[0]+','+c[1]+','+c[2]+','+alpha+')';
     ctx.beginPath();
-    ctx.arc(px, py, p.r, 0, Math.PI*2);
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
     ctx.fill();
   }
-
-  var vig = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.4, W/2, H/2, Math.max(W,H)*0.75);
-  vig.addColorStop(0, 'rgba(0,0,0,0)');
-  vig.addColorStop(1, 'rgba(0,0,0,0.35)');
-  ctx.fillStyle = vig;
-  ctx.fillRect(0,0,W,H);
 }
 
 function drawHUD(){
@@ -819,15 +836,21 @@ function drawHUD(){
 
 function drawBoard(){
   var th = T();
+
   if (boardGlow > 0.05){
+    ctx.save();
     ctx.shadowColor = th.glow;
     ctx.shadowBlur = 30 * boardGlow;
+    ctx.fillStyle = 'rgba(99,102,241,0.1)';
+    roundRect(boardX-8, boardY-8, boardSize+16, boardSize+16, 22);
+    ctx.fill();
+    ctx.restore();
   }
+
   drawGlassPanel(boardX-8, boardY-8, boardSize+16, boardSize+16, 22);
-  ctx.shadowColor='transparent';
-  ctx.shadowBlur=0;
 
   var r, c;
+  // Boş hücreler
   for (r=0;r<N;r++) for (c=0;c<N;c++){
     if (grid[r][c]===null){
       var x=boardX+c*cell, y=boardY+r*cell;
@@ -837,6 +860,7 @@ function drawBoard(){
       ctx.fill();
     }
   }
+  // Dolu hücreler
   for (r=0;r<N;r++) for (c=0;c<N;c++){
     var v=grid[r][c];
     if (v) drawBlock(boardX+c*cell, boardY+r*cell, cell, v);
@@ -848,7 +872,10 @@ function drawGhost(){
   var p=drag.piece;
   ctx.globalAlpha=0.4;
   for (var i=0;i<p.cells.length;i++){
-    drawBlock(boardX+(drag.col+p.cells[i][1])*cell, boardY+(drag.row+p.cells[i][0])*cell, cell, p.color, {glow: 12});
+    var x = boardX+(drag.col+p.cells[i][1])*cell;
+    var y = boardY+(drag.row+p.cells[i][0])*cell;
+    var sprite = getBlockSprite(p.color, cell);
+    ctx.drawImage(sprite, x, y, cell, cell);
   }
   ctx.globalAlpha=1;
 }
@@ -891,7 +918,16 @@ function drawDrag(){
   var ox=cx-p.w*pc/2, oy=cy-p.h*pc/2;
   ctx.globalAlpha=0.98;
   for (var i=0;i<p.cells.length;i++){
-    drawBlock(ox+p.cells[i][1]*pc, oy+p.cells[i][0]*pc, pc, p.color, {shadow: 18});
+    var x = ox+p.cells[i][1]*pc;
+    var y = oy+p.cells[i][0]*pc;
+    // Sadece drag için gölge
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+    var sprite = getBlockSprite(p.color, pc);
+    ctx.drawImage(sprite, x, y, pc, pc);
+    ctx.restore();
   }
   ctx.globalAlpha=1;
 }
