@@ -42,6 +42,7 @@ var canvas = document.getElementById('c');
 var ctx = canvas.getContext('2d');
 var N = 8;
 var PAD = 16;
+var GLOW_RATIO = 0.14; /* neon glow kalınlığı — bloğun %14'ü */
 
 var COLORS = ['#ff7b8a','#5fd3c4','#ffc94d','#8ee0b4','#b98df2','#ffa676','#7bc8ec','#f48fbb'];
 
@@ -110,7 +111,7 @@ var buttons = {};
 
 var blockCache = {};
 
-var SAVE_KEY='blokSave_v9';
+var SAVE_KEY='blokSave_v10';
 var save = {
   best:0, bestClassic:0, level:1,
   soundOn:true, musicOn:false, vibrationOn:true, theme:'midnight',
@@ -120,26 +121,37 @@ var save = {
 try {
   var raw = localStorage.getItem(SAVE_KEY);
   if (raw) Object.assign(save, JSON.parse(raw));
-  // Eski kayıttan geçiş
-  var oldRaw = localStorage.getItem('blokSave_v8');
-  if (oldRaw){
-    var oldSave = JSON.parse(oldRaw);
-    if (oldSave.best && !save.bestClassic) save.bestClassic = oldSave.best;
-    if (oldSave.level) save.level = oldSave.level;
+  else {
+    var v9 = localStorage.getItem('blokSave_v9');
+    if (v9){
+      var s9 = JSON.parse(v9);
+      if (s9.best) save.best = s9.best;
+      if (s9.bestClassic) save.bestClassic = s9.bestClassic;
+      if (s9.level) save.level = s9.level;
+      if (s9.theme) save.theme = s9.theme;
+      if (typeof s9.soundOn === 'boolean') save.soundOn = s9.soundOn;
+      if (typeof s9.musicOn === 'boolean') save.musicOn = s9.musicOn;
+      if (typeof s9.vibrationOn === 'boolean') save.vibrationOn = s9.vibrationOn;
+      if (s9.totalGames) save.totalGames = s9.totalGames;
+      if (s9.mode) save.mode = s9.mode;
+    } else {
+      var v8 = localStorage.getItem('blokSave_v8');
+      if (v8){
+        var s8 = JSON.parse(v8);
+        if (s8.best) save.best = s8.best;
+        if (s8.level) save.level = s8.level;
+      }
+    }
   }
 } catch(e){}
 function persist(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e){} }
 function T(){ return THEMES[save.theme] || THEMES.midnight; }
 
-function levelTarget(lv){ return 200 + (lv-1)*120; }
+function levelTarget(lv){ return 350 + (lv-1)*180; }
 function currentLevel(){ return save.level; }
 function currentTarget(){ return levelTarget(save.level); }
 function currentBest(){
   return (save.mode === 'classic') ? save.bestClassic : save.best;
-}
-function setCurrentBest(v){
-  if (save.mode === 'classic') save.bestClassic = v;
-  else save.best = v;
 }
 
 /* ============ SAFE AREA ============ */
@@ -235,22 +247,22 @@ function layer(freq, dur, type, vol, when, opts){
 var Sfx = {
   pick: function(){
     if (!save.soundOn) return;
-    layer(1100, 0.045, 'sine', 0.055, 0, {freqEnd:750, attack:0.002});
-    layer(2200, 0.03, 'triangle', 0.018, 0, {freqEnd:1500});
+    layer(1100, 0.045, 'sine', 0.045, 0, {freqEnd:750, attack:0.002});
+    layer(2200, 0.03, 'triangle', 0.014, 0, {freqEnd:1500});
   },
   place: function(){
     if (!save.soundOn) return;
-    layer(260, 0.11, 'sine', 0.16, 0, {freqEnd:130, attack:0.004});
-    layer(1300, 0.035, 'triangle', 0.045, 0, {freqEnd:700, attack:0.002});
+    layer(420, 0.06, 'sine', 0.06, 0, {freqEnd:280, attack:0.003});
+    layer(1400, 0.025, 'triangle', 0.025, 0, {freqEnd:900, attack:0.002});
   },
   clear: function(n){
     if (!save.soundOn) return;
-    layer(150, 0.2, 'sine', 0.22, 0, {freqEnd:55, attack:0.005});
-    layer(700, 0.07, 'triangle', 0.11, 0.008, {freqEnd:380, attack:0.003});
+    layer(200, 0.15, 'sine', 0.15, 0, {freqEnd:80, attack:0.005});
+    layer(700, 0.06, 'triangle', 0.08, 0.008, {freqEnd:380, attack:0.003});
     var notes = [880, 1108.7, 1318.5, 1568];
     var count = Math.min(4, Math.max(1, n));
     for (var i=0;i<count;i++){
-      layer(notes[i], 0.22, 'triangle', 0.06, 0.03 + i*0.05, {attack:0.008});
+      layer(notes[i], 0.2, 'triangle', 0.05, 0.03 + i*0.05, {attack:0.008});
     }
   },
   combo: function(c){
@@ -262,8 +274,8 @@ var Sfx = {
       var semi = scale[i % scale.length];
       var f = base * Math.pow(2, semi/12);
       var t = i * 0.055;
-      layer(f, 0.14, 'triangle', 0.075, t, {attack:0.005});
-      layer(f*2, 0.1, 'sine', 0.025, t, {attack:0.005});
+      layer(f, 0.14, 'triangle', 0.06, t, {attack:0.005});
+      layer(f*2, 0.1, 'sine', 0.02, t, {attack:0.005});
     }
   },
   levelUp: function(){
@@ -286,7 +298,7 @@ var Sfx = {
   },
   click: function(){
     if (!save.soundOn) return;
-    layer(1400, 0.04, 'sine', 0.05, 0, {freqEnd:900, attack:0.002});
+    layer(1400, 0.04, 'sine', 0.045, 0, {freqEnd:900, attack:0.002});
   }
 };
 
@@ -310,21 +322,21 @@ function startMusic(){
     var chord = chords[bar];
     var bass = basses[bar];
 
-    if (s === 0 || s === 8) layer(60, 0.2, 'sine', 0.12, 0, {freqEnd:35, attack:0.003});
-    if (s === 4 || s === 12) layer(180, 0.08, 'triangle', 0.05, 0, {freqEnd:90});
-    if (s % 2 === 0) layer(8000, 0.02, 'square', 0.008, 0, {filter:'highpass', filterFreq:6000});
+    if (s === 0 || s === 8) layer(60, 0.2, 'sine', 0.08, 0, {freqEnd:35, attack:0.003});
+    if (s === 4 || s === 12) layer(180, 0.08, 'triangle', 0.035, 0, {freqEnd:90});
+    if (s % 2 === 0) layer(8000, 0.02, 'square', 0.006, 0, {filter:'highpass', filterFreq:6000});
     if (s === 0){
-      layer(bass, 1.6, 'sine', 0.08, 0, {attack:0.02});
-      for (var i=0;i<chord.length;i++) layer(chord[i], 2.8, 'sine', 0.018, 0, {attack:0.3});
+      layer(bass, 1.6, 'sine', 0.06, 0, {attack:0.02});
+      for (var i=0;i<chord.length;i++) layer(chord[i], 2.8, 'sine', 0.014, 0, {attack:0.3});
     }
     if (melodySteps.indexOf(s) >= 0){
       var idx = (musicStep16 * 7 + s * 3) % melodyNotes.length;
       var note = melodyNotes[idx];
-      layer(note, 0.6, 'triangle', 0.045, 0, {attack:0.02});
+      layer(note, 0.6, 'triangle', 0.035, 0, {attack:0.02});
     }
     if (s % 2 === 1){
       var arpNote = chord[(s/2|0) % chord.length] * 2;
-      layer(arpNote, 0.25, 'sine', 0.012, 0, {attack:0.01});
+      layer(arpNote, 0.25, 'sine', 0.01, 0, {attack:0.01});
     }
     musicStep16++;
   };
@@ -385,19 +397,49 @@ function roundRectC(c,x,y,w,h,r){
   c.closePath();
 }
 
-/* ============ SPRITE ============ */
+/* ============ SPRITE (neon glow dahil) ============ */
 function getBlockSprite(color, size){
   if (!isFinite(size) || size < 2) return null;
   var roundedSize = Math.max(2, Math.round(size));
   var key = color + '_' + roundedSize;
   if (blockCache[key]) return blockCache[key];
+  
+  /* Sprite boyutu: blok + glow payı (GLOW_RATIO kadar her iki yanda) */
+  var glowPad = Math.round(roundedSize * GLOW_RATIO);
+  var totalSize = roundedSize + glowPad * 2;
+  
   var c = document.createElement('canvas');
-  c.width = roundedSize;
-  c.height = roundedSize;
+  c.width = totalSize;
+  c.height = totalSize;
   var cx = c.getContext('2d');
-  try { drawBlockRaw(cx, 0, 0, roundedSize, color); } catch(e){}
+  
+  try {
+    /* 1) NEON GLOW — bloğun arkasına yumuşak renkli ışıma */
+    var rgb = hexToRgb(color);
+    var centerX = totalSize / 2;
+    var centerY = totalSize / 2;
+    var glowInner = roundedSize * 0.3;
+    var glowOuter = totalSize * 0.55;
+    
+    var glowGrad = cx.createRadialGradient(centerX, centerY, glowInner, centerX, centerY, glowOuter);
+    glowGrad.addColorStop(0, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.35)');
+    glowGrad.addColorStop(0.55, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.14)');
+    glowGrad.addColorStop(1, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0)');
+    cx.fillStyle = glowGrad;
+    cx.fillRect(0, 0, totalSize, totalSize);
+    
+    /* 2) BLOĞUN KENDİSİ — ortada */
+    drawBlockRaw(cx, glowPad, glowPad, roundedSize, color);
+  } catch(e){}
+  
   blockCache[key] = c;
   return c;
+}
+
+/* Sprite bilgisi — drawBlock için konum hesabı */
+function getBlockDrawBox(x, y, size){
+  var glowPad = size * GLOW_RATIO;
+  return { x: x - glowPad, y: y - glowPad, w: size + glowPad*2, h: size + glowPad*2 };
 }
 
 function drawBlockRaw(c, x, y, size, color){
@@ -440,6 +482,7 @@ function drawBlock(x, y, size, color, opts){
   if (!isFinite(x)||!isFinite(y)||!isFinite(size)||size<=0.5) return;
   var sprite = getBlockSprite(color, size);
   if (!sprite) return;
+  var box = getBlockDrawBox(x, y, size);
   if (opts && (opts.glow || opts.shadow)){
     ctx.save();
     if (opts.glow){
@@ -450,11 +493,11 @@ function drawBlock(x, y, size, color, opts){
       ctx.shadowBlur = opts.shadow;
       ctx.shadowOffsetY = opts.shadow*0.3;
     }
-    ctx.drawImage(sprite, x, y, size, size);
+    ctx.drawImage(sprite, box.x, box.y, box.w, box.h);
     ctx.restore();
     return;
   }
-  ctx.drawImage(sprite, x, y, size, size);
+  ctx.drawImage(sprite, box.x, box.y, box.w, box.h);
 }
 
 /* ============ PANEL / BUTON ============ */
@@ -797,14 +840,12 @@ function drawHUD(){
   ctx.font='800 '+Math.round(numF*0.72)+'px -apple-system, sans-serif';
   ctx.fillText(String(currentBest()), W-PAD-42, topY + 26 + numF + 2);
 
-  // Mod etiketi
   ctx.textAlign='left';
   ctx.fillStyle = isLevel ? th.accent2 : '#5fd3c4';
   ctx.font='800 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
   var modeLabel = isLevel ? ('LEVEL ' + currentLevel()) : 'CLASSIC';
   ctx.fillText(modeLabel, PAD+2, topY + 26 + numF + Math.round(W*0.048));
 
-  // Sadece level modunda progress bar
   if (isLevel){
     var ly = topY + 26 + numF + Math.round(W*0.048);
     var barW = W-PAD*2-100, barH = 8;
@@ -825,7 +866,6 @@ function drawHUD(){
     ctx.font='700 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
     ctx.fillText(score+' / '+currentTarget(), W-PAD-42, barY+barH+2);
   } else {
-    // Classic modda sağda küçük "sonsuz" simgesi
     ctx.textAlign='right';
     ctx.fillStyle='rgba(255,255,255,0.3)';
     ctx.font='700 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
@@ -963,7 +1003,7 @@ function drawToast(){
   ctx.textAlign='center';
   ctx.textBaseline='middle';
   var w = W*0.7, h = 44;
-  var x = (W-w)/2, y = H - safeBottom - 20 - h;
+  var x bg = (W-w)/2, y = H - safeBottom - 20 - h;
   drawGlassPanel(x, y, w, h, 22);
   ctx.fillStyle = T().text;
   ctx.font = '700 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
@@ -1001,21 +1041,19 @@ function drawMenu(){
   var tg2 = ctx.createLinearGradient(0, W*0.06, 0, W*0.22);
   tg2.addColorStop(0, '#ffd166');
   tg2.addColorStop(1, '#ff9f68');
-  ctx.fillStyle = tg2;
+C  ctx.fillStyle = tg2;
   ctx.fillText('BURST', 0, Math.round(W*0.125));
   ctx.restore();
 
-  // MOD SEÇİCİ (sekmeler)
   var tabY = topOffset + H*0.36;
   var tabW = W*0.36, tabH = 48, tabGap = 8;
   var totalTabsW = tabW*2 + tabGap;
   var tabStartX = (W - totalTabsW)/2;
 
-  // Classic sekmesi
   var classicTab = {x: tabStartX, y: tabY, w: tabW, h: tabH};
   var isClassic = (save.mode === 'classic');
   if (isClassic){
-    var bgC = ctx.createLinearGradient(0, classicTab.y, 0, classicTab.y+classicTab.h);
+    var = ctx.createLinearGradient(0, classicTab.y, 0, classicTab.y+classicTab.h);
     bgC.addColorStop(0, '#5fd3c4');
     bgC.addColorStop(1, '#3eb3a3');
     ctx.fillStyle='rgba(0,0,0,0.35)';
@@ -1041,7 +1079,6 @@ function drawMenu(){
   ctx.fillText('CLASSIC', classicTab.x+classicTab.w/2, classicTab.y+classicTab.h/2+1);
   buttons.modeClassic = classicTab;
 
-  // Level sekmesi
   var levelTab = {x: tabStartX+tabW+tabGap, y: tabY, w: tabW, h: tabH};
   var isLevel = (save.mode === 'level');
   if (isLevel){
@@ -1069,13 +1106,11 @@ function drawMenu(){
   ctx.fillText('LEVEL', levelTab.x+levelTab.w/2, levelTab.y+levelTab.h/2+1);
   buttons.modeLevel = levelTab;
 
-  // Mod açıklaması
   ctx.fillStyle = th.dim;
   ctx.font='600 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
   var modeDesc = isClassic ? 'Endless — just score' : 'Hit target to level up';
   ctx.fillText(modeDesc, W/2, tabY + tabH + 16);
 
-  // Rekor badge
   var badgeW = W*0.72, badgeH = 72;
   var bx = (W-badgeW)/2, by = topOffset + H*0.5;
   drawGlassPanel(bx, by, badgeW, badgeH, 22);
@@ -1099,7 +1134,6 @@ function drawMenu(){
     ctx.fillText(String(save.best), W*0.68, by+48);
   }
 
-  // PLAY
   var bw=W*0.68, bh=Math.max(64, W*0.17);
   var bx2=(W-bw)/2;
   var b1={x:bx2, y:topOffset + H*0.63, w:bw, h:bh};
@@ -1107,7 +1141,6 @@ function drawMenu(){
   drawButton(b1, 'PLAY', playColor, '#ffffff', W*0.065);
   buttons.play = b1;
 
-  // Alt ikonlar
   var iconSize = Math.max(52, W*0.14);
   var iconGap = 16;
   var totalW = iconSize*2+iconGap;
@@ -1294,7 +1327,6 @@ function drawGameOverOverlay(){
     ctx.fillText('Best: '+bestVal, W/2, cy+cardH*0.36);
   }
 
-  // Mod bilgisi (küçük)
   ctx.fillStyle = 'rgba(255,255,255,0.25)';
   ctx.font='600 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
   ctx.fillText((save.mode === 'classic' ? 'CLASSIC' : 'LEVEL '+currentLevel()), W/2, cy+cardH*0.42);
@@ -1609,7 +1641,6 @@ function onUp(e){
 
   if (!pieces[0] && !pieces[1] && !pieces[2]) newPieces();
 
-  // Skor kaydı — moda göre
   if (save.mode === 'classic'){
     if (score > save.bestClassic){ save.bestClassic = score; persist(); }
   } else {
@@ -1617,7 +1648,6 @@ function onUp(e){
   }
   layoutTray();
 
-  // Level tamamlanma kontrolü — SADECE LEVEL modunda
   if (save.mode === 'level' && score >= currentTarget()){
     STATE = 'levelComplete';
     spawnConfetti();
