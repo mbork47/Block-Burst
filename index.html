@@ -4,7 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#0a0e27">
-<title>Blok Patlat</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-512.png.png">
+<link rel="apple-touch-icon" href="icon-512.png.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Block Burst</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{width:100%;height:100%;overflow:hidden;
@@ -117,15 +122,11 @@ function levelTarget(lv){ return 200 + (lv-1)*120; }
 function currentLevel(){ return save.level; }
 function currentTarget(){ return levelTarget(save.level); }
 
-/* ============================================================
-   SES MOTORU v2 — kilitlenmez, otomatik uyanır
-   ============================================================ */
 var audioCtx = null;
 var audioUnlocked = false;
 var musicTimer = null, musicStep = 0;
 var MUSIC_NOTES = [261.63,329.63,392.00,523.25,392.00,329.63,293.66,349.23];
 
-// Motoru uyandır — her seste çağrılır
 function wakeAudio(){
   if (!audioCtx) return;
   if (audioCtx.state === 'suspended'){
@@ -133,7 +134,6 @@ function wakeAudio(){
   }
 }
 
-// İlk kullanıcı etkileşiminde motoru kur + uyandır
 function initAudio(){
   if (!audioCtx){
     try {
@@ -147,21 +147,16 @@ function initAudio(){
   }
 }
 
-// Sayfa tekrar görünür olduğunda uyandır
 document.addEventListener('visibilitychange', function(){
   if (!document.hidden) wakeAudio();
 });
 window.addEventListener('focus', wakeAudio);
 window.addEventListener('pageshow', wakeAudio);
-
-// Her 2 saniyede kontrol (bazı tarayıcılar için zorunlu)
 setInterval(wakeAudio, 2000);
 
-// Ortak osilatör katmanı
 function layer(freq, dur, type, vol, when, opts){
   opts = opts || {};
   if (!audioCtx) return;
-  // Her katmanda uyandır
   if (audioCtx.state === 'suspended') wakeAudio();
   if (audioCtx.state !== 'running') return;
   try {
@@ -285,9 +280,6 @@ function vib(ms){
 }
 function toast(msg){ toastMsg = msg; toastStart = performance.now(); }
 
-/* ============================================================
-   Yardımcılar
-   ============================================================ */
 function normalizeHex(hex){
   if (typeof hex !== 'string') return '000000';
   hex = hex.replace('#','');
@@ -1272,7 +1264,6 @@ function updateDrag(pos){
 function onDown(e){
   var pos=getPos(e);
   e.preventDefault();
-  // Her dokunuşta ses motorunu uyandır (kritik!)
   wakeAudio();
   initAudio();
   if (save.musicOn && !musicTimer) startMusic();
@@ -1481,6 +1472,13 @@ resize();
 loop();
 
 })();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
 </script>
 </body>
 </html>
