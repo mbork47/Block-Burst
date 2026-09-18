@@ -42,7 +42,6 @@ var canvas = document.getElementById('c');
 var ctx = canvas.getContext('2d');
 var N = 8;
 var PAD = 16;
-var GLOW_RATIO = 0.14; /* neon glow kalınlığı — bloğun %14'ü */
 
 var COLORS = ['#ff7b8a','#5fd3c4','#ffc94d','#8ee0b4','#b98df2','#ffa676','#7bc8ec','#f48fbb'];
 
@@ -158,6 +157,7 @@ function currentBest(){
 function measureSafeArea(){
   var t = 0, b = 0;
   try {
+    if (!document.body) return;
     var td = document.createElement('div');
     td.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;';
     document.body.appendChild(td);
@@ -165,8 +165,10 @@ function measureSafeArea(){
     bd.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none;';
     document.body.appendChild(bd);
 
-    t = td.getBoundingClientRect().height || 0;
-    b = bd.getBoundingClientRect().height || 0;
+    var th = td.getBoundingClientRect().height;
+    var bh = bd.getBoundingClientRect().height;
+    t = (isFinite(th) && th > 0) ? th : 0;
+    b = (isFinite(bh) && bh > 0) ? bh : 0;
 
     document.body.removeChild(td);
     document.body.removeChild(bd);
@@ -181,8 +183,8 @@ function measureSafeArea(){
   if (t < 20 && isStandalone) t = 44;
   if (t < 20 && !isStandalone && window.innerHeight > 700) t = 20;
 
-  safeTop = Math.round(t);
-  safeBottom = Math.round(b);
+  safeTop = isFinite(t) ? Math.round(t) : 0;
+  safeBottom = isFinite(b) ? Math.round(b) : 0;
 }
 
 /* ============ AUDIO ============ */
@@ -397,16 +399,18 @@ function roundRectC(c,x,y,w,h,r){
   c.closePath();
 }
 
-/* ============ SPRITE (neon glow dahil) ============ */
+/* ============ SPRITE — neon glow via shadowBlur ============ */
+var GLOW_RATIO = 0.12;
+
 function getBlockSprite(color, size){
   if (!isFinite(size) || size < 2) return null;
   var roundedSize = Math.max(2, Math.round(size));
   var key = color + '_' + roundedSize;
   if (blockCache[key]) return blockCache[key];
   
-  /* Sprite boyutu: blok + glow payı (GLOW_RATIO kadar her iki yanda) */
   var glowPad = Math.round(roundedSize * GLOW_RATIO);
   var totalSize = roundedSize + glowPad * 2;
+  if (totalSize < 4) totalSize = 4;
   
   var c = document.createElement('canvas');
   c.width = totalSize;
@@ -414,21 +418,16 @@ function getBlockSprite(color, size){
   var cx = c.getContext('2d');
   
   try {
-    /* 1) NEON GLOW — bloğun arkasına yumuşak renkli ışıma */
-    var rgb = hexToRgb(color);
-    var centerX = totalSize / 2;
-    var centerY = totalSize / 2;
-    var glowInner = roundedSize * 0.3;
-    var glowOuter = totalSize * 0.55;
+    /* 1) Shadow ile glow efekti — bloğu çizince etrafına renkli ışıma yapar */
+    cx.shadowColor = color;
+    cx.shadowBlur = glowPad * 2.2;
+    cx.shadowOffsetX = 0;
+    cx.shadowOffsetY = 0;
+    drawBlockRaw(cx, glowPad, glowPad, roundedSize, color);
     
-    var glowGrad = cx.createRadialGradient(centerX, centerY, glowInner, centerX, centerY, glowOuter);
-    glowGrad.addColorStop(0, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.35)');
-    glowGrad.addColorStop(0.55, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0.14)');
-    glowGrad.addColorStop(1, 'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+',0)');
-    cx.fillStyle = glowGrad;
-    cx.fillRect(0, 0, totalSize, totalSize);
-    
-    /* 2) BLOĞUN KENDİSİ — ortada */
+    /* 2) Shadow kapat ve bloğu tekrar çiz — iç kısım net olsun */
+    cx.shadowColor = 'transparent';
+    cx.shadowBlur = 0;
     drawBlockRaw(cx, glowPad, glowPad, roundedSize, color);
   } catch(e){}
   
@@ -436,7 +435,6 @@ function getBlockSprite(color, size){
   return c;
 }
 
-/* Sprite bilgisi — drawBlock için konum hesabı */
 function getBlockDrawBox(x, y, size){
   var glowPad = size * GLOW_RATIO;
   return { x: x - glowPad, y: y - glowPad, w: size + glowPad*2, h: size + glowPad*2 };
@@ -1003,7 +1001,7 @@ function drawToast(){
   ctx.textAlign='center';
   ctx.textBaseline='middle';
   var w = W*0.7, h = 44;
-  var x bg = (W-w)/2, y = H - safeBottom - 20 - h;
+  var x = (W-w)/2, y = H - safeBottom - 20 - h;
   drawGlassPanel(x, y, w, h, 22);
   ctx.fillStyle = T().text;
   ctx.font = '700 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
@@ -1041,7 +1039,7 @@ function drawMenu(){
   var tg2 = ctx.createLinearGradient(0, W*0.06, 0, W*0.22);
   tg2.addColorStop(0, '#ffd166');
   tg2.addColorStop(1, '#ff9f68');
-C  ctx.fillStyle = tg2;
+  ctx.fillStyle = tg2;
   ctx.fillText('BURST', 0, Math.round(W*0.125));
   ctx.restore();
 
@@ -1053,7 +1051,7 @@ C  ctx.fillStyle = tg2;
   var classicTab = {x: tabStartX, y: tabY, w: tabW, h: tabH};
   var isClassic = (save.mode === 'classic');
   if (isClassic){
-    var = ctx.createLinearGradient(0, classicTab.y, 0, classicTab.y+classicTab.h);
+    var bgC = ctx.createLinearGradient(0, classicTab.y, 0, classicTab.y+classicTab.h);
     bgC.addColorStop(0, '#5fd3c4');
     bgC.addColorStop(1, '#3eb3a3');
     ctx.fillStyle='rgba(0,0,0,0.35)';
