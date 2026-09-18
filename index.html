@@ -124,9 +124,7 @@ function currentTarget(){ return levelTarget(save.level); }
 
 var audioCtx = null;
 var audioUnlocked = false;
-var musicTimer = null, musicStep = 0;
-var MUSIC_NOTES = [261.63,329.63,392.00,523.25,659.25,587.33,523.25,392.00,329.63,392.00,523.25,587.33,659.25,523.25,440.00,392.00];
-var MUSIC_BASS = [130.81,130.81,164.81,130.81,174.61,146.83,130.81,164.81];
+var musicTimer = null, musicStep16 = 0;
 
 function wakeAudio(){
   if (!audioCtx) return;
@@ -256,31 +254,63 @@ var Sfx = {
 
 function startMusic(){
   if (!save.musicOn || !audioCtx || musicTimer) return;
+  var chords = [
+    [261.63, 329.63, 392.00],
+    [196.00, 246.94, 293.66],
+    [220.00, 261.63, 329.63],
+    [174.61, 220.00, 261.63]
+  ];
+  var basses = [130.81, 98.00, 110.00, 87.31];
+  var melodyNotes = [523.25, 587.33, 659.25, 783.99, 880.00];
+  var melodySteps = [0, 3, 6, 10, 14];
+
   var step = function(){
     if (!save.musicOn) return;
     if (!audioCtx || audioCtx.state !== 'running') return;
-    var idx = musicStep % MUSIC_NOTES.length;
-    var n = MUSIC_NOTES[idx];
-    var bassIdx = Math.floor(musicStep / 4) % MUSIC_BASS.length;
-    var b = MUSIC_BASS[bassIdx];
+    var s = musicStep16 % 16;
+    var bar = Math.floor(musicStep16 / 16) % 4;
+    var chord = chords[bar];
+    var bass = basses[bar];
 
-    layer(n, 0.55, 'triangle', 0.025, 0, {attack:0.015});
-    layer(n*2, 0.4, 'sine', 0.008, 0, {detune: 5});
+    if (s === 0 || s === 8){
+      layer(60, 0.2, 'sine', 0.12, 0, {freqEnd:35, attack:0.003});
+    }
+    if (s === 4 || s === 12){
+      layer(180, 0.08, 'triangle', 0.05, 0, {freqEnd:90});
+      layer(2000, 0.03, 'sawtooth', 0.015, 0, {filter:'highpass', filterFreq:1500});
+    }
+    if (s % 2 === 0){
+      layer(8000, 0.02, 'square', 0.008, 0, {filter:'highpass', filterFreq:6000});
+    }
 
-    if (musicStep % 4 === 0){
-      layer(b, 1.6, 'sine', 0.025, 0, {attack:0.05});
-      layer(b/2, 1.8, 'triangle', 0.015, 0, {attack:0.06});
+    if (s === 0){
+      layer(bass, 1.6, 'sine', 0.08, 0, {attack:0.02});
+      layer(bass/2, 1.8, 'triangle', 0.04, 0, {attack:0.03});
     }
-    if (musicStep % 2 === 1){
-      layer(n*1.5, 0.35, 'sine', 0.01, 0.15, {attack:0.02});
+
+    if (s === 0){
+      for (var i=0;i<chord.length;i++){
+        layer(chord[i], 2.8, 'sine', 0.018, 0, {attack:0.3});
+        layer(chord[i]*2, 2.4, 'triangle', 0.006, 0, {detune: 5, attack:0.3});
+      }
     }
-    if (musicStep % 8 === 0){
-      layer(n*3, 0.3, 'sine', 0.005, 0.05);
+
+    if (melodySteps.indexOf(s) >= 0){
+      var idx = (musicStep16 * 7 + s * 3) % melodyNotes.length;
+      var note = melodyNotes[idx];
+      layer(note, 0.6, 'triangle', 0.045, 0, {attack:0.02});
+      layer(note*2, 0.4, 'sine', 0.012, 0, {attack:0.02});
     }
-    musicStep++;
+
+    if (s % 2 === 1){
+      var arpNote = chord[(s/2|0) % chord.length] * 2;
+      layer(arpNote, 0.25, 'sine', 0.012, 0, {attack:0.01});
+    }
+
+    musicStep16++;
   };
   step();
-  musicTimer = setInterval(step, 420);
+  musicTimer = setInterval(step, 156);
 }
 function stopMusic(){ if (musicTimer){ clearInterval(musicTimer); musicTimer=null; } }
 
