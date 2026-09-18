@@ -841,27 +841,27 @@ function drawMenu(){
   var tScale = 1 + Math.sin(now*0.002)*0.012;
   ctx.scale(tScale, tScale);
 
-  ctx.font='900 '+Math.round(W*0.16)+'px -apple-system, sans-serif';
+  ctx.font='900 '+Math.round(W*0.145)+'px -apple-system, sans-serif';
   ctx.fillStyle='rgba(0,0,0,0.4)';
-  ctx.fillText('BLOK', 3, 3);
+  ctx.fillText('BLOCK', 3, 3);
   var tg1 = ctx.createLinearGradient(0, -W*0.08, 0, W*0.08);
   tg1.addColorStop(0, th.accent2);
   tg1.addColorStop(1, th.accent);
   ctx.fillStyle = tg1;
-  ctx.fillText('BLOK', 0, 0);
+  ctx.fillText('BLOCK', 0, 0);
 
   ctx.fillStyle='rgba(0,0,0,0.4)';
-  ctx.fillText('PATLAT', 3, Math.round(W*0.14)+3);
+  ctx.fillText('BURST', 3, Math.round(W*0.14)+3);
   var tg2 = ctx.createLinearGradient(0, W*0.06, 0, W*0.22);
   tg2.addColorStop(0, '#ffd166');
   tg2.addColorStop(1, '#ff9f68');
   ctx.fillStyle = tg2;
-  ctx.fillText('PATLAT', 0, Math.round(W*0.14));
+  ctx.fillText('BURST', 0, Math.round(W*0.14));
   ctx.restore();
 
   ctx.fillStyle = th.dim;
   ctx.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-  ctx.fillText('Sonsuz blok patlatma', W/2, titleY + Math.round(W*0.22));
+  ctx.fillText('Endless block puzzle', W/2, titleY + Math.round(W*0.22));
 
   var badgeW = W*0.72, badgeH = 78;
   var bx = (W-badgeW)/2, by = H*0.46;
@@ -884,7 +884,7 @@ function drawMenu(){
   var bw=W*0.68, bh=Math.max(64, W*0.17);
   var bx2=(W-bw)/2;
   var b1={x:bx2, y:H*0.6, w:bw, h:bh};
-  drawButton(b1, 'OYNA', th.accent, '#ffffff', W*0.065);
+  drawButton(b1, 'PLAY', th.accent, '#ffffff', W*0.065);
   buttons.play = b1;
 
   var iconSize = Math.max(52, W*0.14);
@@ -913,7 +913,7 @@ function drawMenu(){
 function drawBackButton(){
   var th = T();
   var b = {x:(W-W*0.6)/2, y:H-90, w:W*0.6, h:Math.max(54, W*0.14)};
-  drawButton(b, 'GERİ', th.accent, '#ffffff', W*0.05);
+  drawButton(b, 'BACK', th.accent, '#ffffff', W*0.05);
   buttons.back = b;
 }
 
@@ -929,22 +929,23 @@ function drawScreenTitle(text){
 function drawHowTo(){
   drawBackground();
   buttons={};
-  drawScreenTitle('NASIL OYNANIR');
+  drawScreenTitle('HOW TO PLAY');
   var th = T();
   var lines = [
-    'Altta duran 3 parçayı sürükle',
-    've 8×8 tahtaya bırak.',
+    'Drag the 3 pieces from the bottom',
+    'and drop them on the 8×8 board.',
     '',
-    'Bir satır veya sütunu tamamen',
-    'doldurursan patlar ve puan alırsın.',
+    'Fill a full row or column',
+    'to make it burst and score points.',
     '',
-    'Kısa sürede üst üste patlatırsan',
-    'COMBO çarpanı artar.',
+    'Burst quickly in a row',
+    'to build a COMBO multiplier.',
     '',
-    '3 parça da bitince yenileri gelir.',
+    'When all 3 pieces are used,',
+    'new ones appear.',
     '',
-    'Hedef puana ulaşırsan level atlar,',
-    'hiçbir parça sığmazsa oyun biter.'
+    'Reach the target to level up.',
+    'No moves left = game over.'
   ];
   ctx.font='500 '+Math.round(W*0.038)+'px -apple-system, sans-serif';
   ctx.fillStyle=th.dim;
@@ -957,7 +958,7 @@ function drawHowTo(){
 function drawSettings(){
   drawBackground();
   buttons={};
-  drawScreenTitle('AYARLAR');
+  drawScreenTitle('SETTINGS');
   var th = T();
   var rowW=W*0.84, rowH=Math.max(66, W*0.16);
   var rx=(W-rowW)/2;
@@ -977,16 +978,16 @@ function drawSettings(){
     return { x:rx, y:rowTop, w:rowW, h:rowH };
   }
 
-  buttons.sound = drawRow('SES', save.soundOn ? 'AÇIK' : 'KAPALI', save.soundOn, th.accent);
-  buttons.music = drawRow('MÜZİK', save.musicOn ? 'AÇIK' : 'KAPALI', save.musicOn, th.accent);
-  buttons.vibration = drawRow('TİTREŞİM', save.vibrationOn ? 'AÇIK' : 'KAPALI', save.vibrationOn, th.accent);
+  buttons.sound = drawRow('SOUND', save.soundOn ? 'ON' : 'OFF', save.soundOn, th.accent);
+  buttons.music = drawRow('MUSIC', save.musicOn ? 'ON' : 'OFF', save.musicOn, th.accent);
+  buttons.vibration = drawRow('VIBRATION', save.vibrationOn ? 'ON' : 'OFF', save.vibrationOn, th.accent);
 
   var themeTop = y;
   drawGlassPanel(rx, y, rowW, rowH, 16);
   ctx.textAlign='left';
   ctx.fillStyle=th.text;
   ctx.font='700 '+Math.round(W*0.05)+'px -apple-system, sans-serif';
-  ctx.fillText('TEMA', rx+22, y+rowH/2);
+  ctx.fillText('THEME', rx+22, y+rowH/2);
   var tBtn = {x:rx+rowW-118, y:y+(rowH-48)/2, w:98, h:48};
   drawButton(tBtn, T().name, '#8b5cf6', '#ffffff', W*0.028);
   buttons.theme = { x:rx, y:themeTop, w:rowW, h:rowH };
@@ -996,7 +997,7 @@ function drawSettings(){
   ctx.textBaseline='middle';
   ctx.fillStyle=th.dim;
   ctx.font='600 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
-  ctx.fillText('Toplam oyun: '+save.totalGames, W/2, y);
+  ctx.fillText('Total games: '+save.totalGames, W/2, y);
 
   drawBackButton();
 }
@@ -1015,23 +1016,23 @@ function drawPauseOverlay(){
   ctx.textBaseline='middle';
   ctx.fillStyle=th.text;
   ctx.font='900 '+Math.round(W*0.09)+'px -apple-system, sans-serif';
-  ctx.fillText('DURAKLATILDI', W/2, cy+cardH*0.16);
+  ctx.fillText('PAUSED', W/2, cy+cardH*0.16);
 
   ctx.fillStyle = th.dim;
   ctx.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-  ctx.fillText('Skor: '+score, W/2, cy+cardH*0.3);
+  ctx.fillText('Score: '+score, W/2, cy+cardH*0.3);
 
   var bw=cardW*0.72, bh=Math.max(56, W*0.14);
   var bx=cx+(cardW-bw)/2;
   var y=cy+cardH*0.44;
 
   var b1={x:bx, y:y, w:bw, h:bh};
-  drawButton(b1, 'DEVAM ET', th.accent, '#ffffff', W*0.052);
+  drawButton(b1, 'RESUME', th.accent, '#ffffff', W*0.052);
   buttons.resume = b1;
 
   y += bh + 14;
   var b2={x:bx, y:y, w:bw, h:bh};
-  drawButton(b2, 'ANA MENÜ', '#555555', '#ffffff', W*0.052);
+  drawButton(b2, 'MAIN MENU', '#555555', '#ffffff', W*0.048);
   buttons.toMenu = b2;
 }
 
@@ -1047,7 +1048,7 @@ function drawGameOverOverlay(){
   ctx.textBaseline='middle';
   ctx.fillStyle=th.dim;
   ctx.font='700 '+Math.round(W*0.034)+'px -apple-system, sans-serif';
-  ctx.fillText('OYUN BİTTİ', W/2, cy+45);
+  ctx.fillText('GAME OVER', W/2, cy+45);
 
   ctx.save();
   ctx.translate(W/2, cy+cardH*0.22);
@@ -1064,11 +1065,11 @@ function drawGameOverOverlay(){
   if (score >= save.best && score > 0){
     ctx.fillStyle = th.accent2;
     ctx.font='800 '+Math.round(W*0.042)+'px -apple-system, sans-serif';
-    ctx.fillText('★ YENİ REKOR ★', W/2, cy+cardH*0.36);
+    ctx.fillText('★ NEW RECORD ★', W/2, cy+cardH*0.36);
   } else {
     ctx.fillStyle = th.dim;
     ctx.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-    ctx.fillText('Rekor: '+save.best, W/2, cy+cardH*0.36);
+    ctx.fillText('Best: '+save.best, W/2, cy+cardH*0.36);
   }
 
   var bw=cardW*0.78, bh=Math.max(56, W*0.14);
@@ -1076,20 +1077,20 @@ function drawGameOverOverlay(){
   var y=cy+cardH*0.5;
 
   var b1={x:bx, y:y, w:bw, h:bh};
-  drawButton(b1, 'TEKRAR OYNA', th.accent, '#ffffff', W*0.052);
+  drawButton(b1, 'PLAY AGAIN', th.accent, '#ffffff', W*0.05);
   buttons.play = b1;
 
   y += bh + 12;
 
   if (!continueUsed){
     var b2={x:bx, y:y, w:bw, h:bh};
-    drawButton(b2, '📺 REKLAM İZLE → DEVAM', '#ff9f68', '#ffffff', W*0.038);
+    drawButton(b2, '📺 WATCH AD → CONTINUE', '#ff9f68', '#ffffff', W*0.034);
     buttons.continue = b2;
     y += bh + 12;
   }
 
   var b3={x:bx, y:y, w:bw, h:bh*0.8};
-  drawButton(b3, 'ANA MENÜ', '#555555', '#ffffff', W*0.046);
+  drawButton(b3, 'MAIN MENU', '#555555', '#ffffff', W*0.046);
   buttons.toMenu = b3;
 }
 
@@ -1114,24 +1115,24 @@ function drawLevelCompleteOverlay(){
 
   ctx.fillStyle=th.text;
   ctx.font='900 '+Math.round(W*0.088)+'px -apple-system, sans-serif';
-  ctx.fillText('LEVEL '+currentLevel()+' BİTTİ!', W/2, cy+cardH*0.32);
+  ctx.fillText('LEVEL '+currentLevel()+' CLEARED!', W/2, cy+cardH*0.32);
 
   ctx.fillStyle=th.dim;
   ctx.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-  ctx.fillText('Skor: '+score, W/2, cy+cardH*0.42);
+  ctx.fillText('Score: '+score, W/2, cy+cardH*0.42);
 
   ctx.fillStyle=th.accent2;
   ctx.font='700 '+Math.round(W*0.034)+'px -apple-system, sans-serif';
-  ctx.fillText('Sonraki hedef: '+levelTarget(save.level+1), W/2, cy+cardH*0.48);
+  ctx.fillText('Next target: '+levelTarget(save.level+1), W/2, cy+cardH*0.48);
 
   var bw=cardW*0.75, bh=Math.max(56, W*0.14);
   var bx=cx+(cardW-bw)/2;
   var b1={x:bx, y:cy+cardH*0.58, w:bw, h:bh};
-  drawButton(b1, 'SONRAKİ LEVEL', th.accent, '#ffffff', W*0.05);
+  drawButton(b1, 'NEXT LEVEL', th.accent, '#ffffff', W*0.05);
   buttons.nextLevel = b1;
 
   var b2={x:bx, y:cy+cardH*0.58+bh+12, w:bw, h:bh};
-  drawButton(b2, 'ANA MENÜ', '#555555', '#ffffff', W*0.05);
+  drawButton(b2, 'MAIN MENU', '#555555', '#ffffff', W*0.05);
   buttons.toMenu = b2;
 }
 
@@ -1178,7 +1179,7 @@ function handleButton(pos){
       persist();
       if (save.soundOn){ initAudio(); Sfx.click(); }
       vib(15);
-      toast(save.soundOn ? '🔊 Ses açıldı' : '🔇 Ses kapatıldı');
+      toast(save.soundOn ? '🔊 Sound on' : '🔇 Sound off');
       return true;
     }
     if (inside(buttons.music, pos.x, pos.y)){
@@ -1187,14 +1188,14 @@ function handleButton(pos){
       if (save.musicOn){ initAudio(); startMusic(); }
       else { stopMusic(); }
       vib(15);
-      toast(save.musicOn ? '🎵 Müzik açıldı' : '🔇 Müzik kapatıldı');
+      toast(save.musicOn ? '🎵 Music on' : '🔇 Music off');
       return true;
     }
     if (inside(buttons.vibration, pos.x, pos.y)){
       save.vibrationOn = !save.vibrationOn;
       persist();
       if (save.vibrationOn) vib(30);
-      toast(save.vibrationOn ? '📳 Titreşim açıldı' : '📴 Titreşim kapatıldı');
+      toast(save.vibrationOn ? '📳 Vibration on' : '📴 Vibration off');
       return true;
     }
     if (inside(buttons.theme, pos.x, pos.y)){
@@ -1203,7 +1204,7 @@ function handleButton(pos){
       save.theme=keys[(i+1)%keys.length];
       persist();
       Sfx.click();
-      toast('🎨 Tema: '+T().name);
+      toast('🎨 Theme: '+T().name);
       return true;
     }
     if (inside(buttons.back, pos.x, pos.y)){
@@ -1231,7 +1232,7 @@ function handleButton(pos){
     if (inside(buttons.play, pos.x, pos.y)){ Sfx.click(); startGame(); return true; }
     if (inside(buttons.continue, pos.x, pos.y)){
       Sfx.click();
-      toast('Reklam yükleniyor...');
+      toast('Loading ad...');
       setTimeout(function(){ handleContinue(); }, 1200);
       return true;
     }
@@ -1414,7 +1415,7 @@ function handleContinue(){
   STATE = 'playing';
   boardGlow = 1;
   Sfx.levelUp();
-  spawnFloater(W/2, H/2, 'DEVAM!', '#5fd3c4', true);
+  spawnFloater(W/2, H/2, 'CONTINUE!', '#5fd3c4', true);
 }
 
 canvas.addEventListener('pointerdown', function(e){
