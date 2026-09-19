@@ -105,14 +105,24 @@ var now=0;
 var continueUsed=false;
 var toastMsg=null, toastStart=0;
 
+/* Rush için */
+var rushTimeLeft = 0;
+var rushLastTick = 0;
+var rushSecondsLeft = 60;
+var RUSH_DURATION = 60;
+
+/* Puzzle için */
+var puzzleMoves = 20;
+var PUZZLE_MOVES = 20;
+
 var STATE = 'menu';
 var buttons = {};
 
 var blockCache = {};
 
-var SAVE_KEY='blokSave_v10';
+var SAVE_KEY='blokSave_v11';
 var save = {
-  best:0, bestClassic:0, level:1,
+  best:0, bestClassic:0, bestRush:0, bestZen:0, bestPuzzle:0, level:1,
   soundOn:true, musicOn:false, vibrationOn:true, theme:'midnight',
   totalGames:0,
   mode:'classic'
@@ -121,25 +131,19 @@ try {
   var raw = localStorage.getItem(SAVE_KEY);
   if (raw) Object.assign(save, JSON.parse(raw));
   else {
-    var v9 = localStorage.getItem('blokSave_v9');
-    if (v9){
-      var s9 = JSON.parse(v9);
-      if (s9.best) save.best = s9.best;
-      if (s9.bestClassic) save.bestClassic = s9.bestClassic;
-      if (s9.level) save.level = s9.level;
-      if (s9.theme) save.theme = s9.theme;
-      if (typeof s9.soundOn === 'boolean') save.soundOn = s9.soundOn;
-      if (typeof s9.musicOn === 'boolean') save.musicOn = s9.musicOn;
-      if (typeof s9.vibrationOn === 'boolean') save.vibrationOn = s9.vibrationOn;
-      if (s9.totalGames) save.totalGames = s9.totalGames;
-      if (s9.mode) save.mode = s9.mode;
-    } else {
-      var v8 = localStorage.getItem('blokSave_v8');
-      if (v8){
-        var s8 = JSON.parse(v8);
-        if (s8.best) save.best = s8.best;
-        if (s8.level) save.level = s8.level;
-      }
+    /* v10 migration */
+    var v10 = localStorage.getItem('blokSave_v10');
+    if (v10){
+      var s10 = JSON.parse(v10);
+      if (s10.best) save.best = s10.best;
+      if (s10.bestClassic) save.bestClassic = s10.bestClassic;
+      if (s10.level) save.level = s10.level;
+      if (s10.theme) save.theme = s10.theme;
+      if (typeof s10.soundOn === 'boolean') save.soundOn = s10.soundOn;
+      if (typeof s10.musicOn === 'boolean') save.musicOn = s10.musicOn;
+      if (typeof s10.vibrationOn === 'boolean') save.vibrationOn = s10.vibrationOn;
+      if (s10.totalGames) save.totalGames = s10.totalGames;
+      if (s10.mode) save.mode = s10.mode;
     }
   }
 } catch(e){}
@@ -149,8 +153,40 @@ function T(){ return THEMES[save.theme] || THEMES.midnight; }
 function levelTarget(lv){ return 350 + (lv-1)*180; }
 function currentLevel(){ return save.level; }
 function currentTarget(){ return levelTarget(save.level); }
+
 function currentBest(){
-  return (save.mode === 'classic') ? save.bestClassic : save.best;
+  if (save.mode === 'classic') return save.bestClassic;
+  if (save.mode === 'rush') return save.bestRush;
+  if (save.mode === 'zen') return save.bestZen;
+  if (save.mode === 'puzzle') return save.bestPuzzle;
+  return save.best;
+}
+function setCurrentBest(v){
+  if (save.mode === 'classic') save.bestClassic = v;
+  else if (save.mode === 'rush') save.bestRush = v;
+  else if (save.mode === 'zen') save.bestZen = v;
+  else if (save.mode === 'puzzle') save.bestPuzzle = v;
+  else save.best = v;
+}
+
+function modeLabel(){
+  if (save.mode === 'classic') return 'CLASSIC';
+  if (save.mode === 'level') return 'LEVEL ' + currentLevel();
+  if (save.mode === 'rush') return 'RUSH';
+  if (save.mode === 'zen') return 'ZEN';
+  if (save.mode === 'puzzle') return 'PUZZLE';
+  return 'CLASSIC';
+}
+function modeColor(){
+  if (save.mode === 'classic') return '#5fd3c4';
+  if (save.mode === 'level') return T().accent2;
+  if (save.mode === 'rush') return '#ff9f68';
+  if (save.mode === 'zen') return '#b98df2';
+  if (save.mode === 'puzzle') return '#ffd166';
+  return T().accent;
+}
+function modeIsScored(){
+  return save.mode !== 'zen';
 }
 
 /* ============ SAFE AREA ============ */
@@ -298,6 +334,10 @@ var Sfx = {
       layer(notes[i]*0.5, 0.35, 'sine', 0.04, t, {attack:0.015});
     }
   },
+  tick: function(){
+    if (!save.soundOn) return;
+    layer(1000, 0.03, 'sine', 0.04, 0, {freqEnd:800, attack:0.002});
+  },
   click: function(){
     if (!save.soundOn) return;
     layer(1400, 0.04, 'sine', 0.045, 0, {freqEnd:900, attack:0.002});
@@ -399,7 +439,7 @@ function roundRectC(c,x,y,w,h,r){
   c.closePath();
 }
 
-/* ============ SPRITE — neon glow via shadowBlur ============ */
+/* ============ SPRITE ============ */
 var GLOW_RATIO = 0.12;
 
 function getBlockSprite(color, size){
@@ -418,14 +458,11 @@ function getBlockSprite(color, size){
   var cx = c.getContext('2d');
   
   try {
-    /* 1) Shadow ile glow efekti — bloğu çizince etrafına renkli ışıma yapar */
     cx.shadowColor = color;
     cx.shadowBlur = glowPad * 2.2;
     cx.shadowOffsetX = 0;
     cx.shadowOffsetY = 0;
     drawBlockRaw(cx, glowPad, glowPad, roundedSize, color);
-    
-    /* 2) Shadow kapat ve bloğu tekrar çiz — iç kısım net olsun */
     cx.shadowColor = 'transparent';
     cx.shadowBlur = 0;
     drawBlockRaw(cx, glowPad, glowPad, roundedSize, color);
@@ -572,7 +609,7 @@ function resize(){
   canvas.style.height=H+'px';
   ctx.setTransform(DPR,0,0,DPR,0,0);
 
-  var hudBase = Math.min(130, H*0.17);
+  var hudBase = Math.min(140, H*0.18);
   hudH = hudBase + safeTop;
 
   var trayBase = Math.min(125, H*0.18);
@@ -814,6 +851,9 @@ function drawHUD(){
   var numF = Math.round(W*0.072);
   var topY = safeTop;
   var isLevel = (save.mode === 'level');
+  var isRush = (save.mode === 'rush');
+  var isZen = (save.mode === 'zen');
+  var isPuzzle = (save.mode === 'puzzle');
 
   ctx.textAlign='left';
   ctx.textBaseline='alphabetic';
@@ -830,19 +870,53 @@ function drawHUD(){
   ctx.fillText(String(Math.round(displayScore)), 0, 0);
   ctx.restore();
 
-  ctx.textAlign='right';
-  ctx.fillStyle=th.dim;
-  ctx.font='700 '+labelF+'px -apple-system, sans-serif';
-  ctx.fillText('REKOR', W-PAD-42, topY + 26);
-  ctx.fillStyle='#ffd166';
-  ctx.font='800 '+Math.round(numF*0.72)+'px -apple-system, sans-serif';
-  ctx.fillText(String(currentBest()), W-PAD-42, topY + 26 + numF + 2);
+  /* Sağ üst: Rekor veya Süre/Hamle */
+  if (isRush){
+    /* Rush'ta sağ üstte süre */
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.font='700 '+labelF+'px -apple-system, sans-serif';
+    ctx.fillText('SÜRE', W-PAD-42, topY + 26);
+    var rushColor = rushSecondsLeft <= 10 ? '#ff6b6b' : '#ff9f68';
+    var rushScale = 1 + (rushSecondsLeft <= 10 ? (Math.sin(now*0.008) * 0.05 + 0.05) : 0);
+    ctx.save();
+    ctx.translate(W-PAD-42, topY + 26 + numF + 2);
+    ctx.scale(rushScale, rushScale);
+    ctx.fillStyle=rushColor;
+    ctx.font='800 '+numF+'px -apple-system, sans-serif';
+    ctx.fillText(String(rushSecondsLeft), 0, 0);
+    ctx.restore();
+  } else if (isPuzzle){
+    /* Puzzle'da sağ üstte hamle */
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(255,255,255,0.35)';
+    ctx.font='700 '+labelF+'px -apple-system, sans-serif';
+    ctx.fillText('HAMLE', W-PAD-42, topY + 26);
+    var puzzleColor = puzzleMoves <= 5 ? '#ff6b6b' : '#ffd166';
+    ctx.fillStyle=puzzleColor;
+    ctx.font='800 '+Math.round(numF*0.72)+'px -apple-system, sans-serif';
+    ctx.fillText(String(puzzleMoves), W-PAD-42, topY + 26 + numF + 2);
+  } else if (isZen){
+    /* Zen'de rekor yok, sadece ikon */
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(185,141,242,0.6)';
+    ctx.font='700 '+Math.round(W*0.08)+'px -apple-system, sans-serif';
+    ctx.fillText('✦', W-PAD-42, topY + 26 + numF);
+  } else {
+    ctx.textAlign='right';
+    ctx.fillStyle=th.dim;
+    ctx.font='700 '+labelF+'px -apple-system, sans-serif';
+    ctx.fillText('REKOR', W-PAD-42, topY + 26);
+    ctx.fillStyle='#ffd166';
+    ctx.font='800 '+Math.round(numF*0.72)+'px -apple-system, sans-serif';
+    ctx.fillText(String(currentBest()), W-PAD-42, topY + 26 + numF + 2);
+  }
 
+  /* Mod etiketi */
   ctx.textAlign='left';
-  ctx.fillStyle = isLevel ? th.accent2 : '#5fd3c4';
+  ctx.fillStyle = modeColor();
   ctx.font='800 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-  var modeLabel = isLevel ? ('LEVEL ' + currentLevel()) : 'CLASSIC';
-  ctx.fillText(modeLabel, PAD+2, topY + 26 + numF + Math.round(W*0.048));
+  ctx.fillText(modeLabel(), PAD+2, topY + 26 + numF + Math.round(W*0.048));
 
   if (isLevel){
     var ly = topY + 26 + numF + Math.round(W*0.048);
@@ -863,6 +937,37 @@ function drawHUD(){
     ctx.fillStyle=th.dim;
     ctx.font='700 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
     ctx.fillText(score+' / '+currentTarget(), W-PAD-42, barY+barH+2);
+  } else if (isRush){
+    /* Rush için süre barı */
+    var ly = topY + 26 + numF + Math.round(W*0.048);
+    var barW = W-PAD*2-60, barH = 8;
+    var barX = PAD+2, barY = ly+8;
+    ctx.fillStyle='rgba(255,255,255,0.1)';
+    roundRect(barX, barY, barW, barH, 4);
+    ctx.fill();
+    var timeProg = Math.max(0, rushSecondsLeft / RUSH_DURATION);
+    var rushBarColor = rushSecondsLeft <= 10 ? '#ff6b6b' : '#ff9f68';
+    ctx.fillStyle=rushBarColor;
+    roundRect(barX, barY, barW*timeProg, barH, 4);
+    ctx.fill();
+  } else if (isPuzzle){
+    /* Puzzle için hamle barı */
+    var ly = topY + 26 + numF + Math.round(W*0.048);
+    var barW = W-PAD*2-60, barH = 8;
+    var barX = PAD+2, barY = ly+8;
+    ctx.fillStyle='rgba(255,255,255,0.1)';
+    roundRect(barX, barY, barW, barH, 4);
+    ctx.fill();
+    var moveProg = Math.max(0, puzzleMoves / PUZZLE_MOVES);
+    var moveColor = puzzleMoves <= 5 ? '#ff6b6b' : '#ffd166';
+    ctx.fillStyle=moveColor;
+    roundRect(barX, barY, barW*moveProg, barH, 4);
+    ctx.fill();
+  } else if (isZen){
+    ctx.textAlign='right';
+    ctx.fillStyle='rgba(185,141,242,0.5)';
+    ctx.font='700 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
+    ctx.fillText('∞', W-PAD-42, topY + 26 + numF + Math.round(W*0.048) + 6);
   } else {
     ctx.textAlign='right';
     ctx.fillStyle='rgba(255,255,255,0.3)';
@@ -1010,6 +1115,37 @@ function drawToast(){
 }
 
 /* ============ MENÜ ============ */
+function drawModeTab(x, y, w, h, label, isActive, activeColor){
+  var th = T();
+  var b = {x:x, y:y, w:w, h:h};
+  if (isActive){
+    var bgC = ctx.createLinearGradient(0, y, 0, y+h);
+    bgC.addColorStop(0, lighten(activeColor, 0.15));
+    bgC.addColorStop(1, activeColor);
+    ctx.fillStyle='rgba(0,0,0,0.35)';
+    roundRect(x, y+3, w, h, h/2);
+    ctx.fill();
+    ctx.fillStyle=bgC;
+    roundRect(x, y, w, h, h/2);
+    ctx.fill();
+    ctx.fillStyle='#0a0a14';
+  } else {
+    ctx.fillStyle='rgba(255,255,255,0.06)';
+    roundRect(x, y, w, h, h/2);
+    ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.12)';
+    ctx.lineWidth=1;
+    roundRect(x, y, w, h, h/2);
+    ctx.stroke();
+    ctx.fillStyle=th.dim;
+  }
+  ctx.font='800 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(label, x+w/2, y+h/2+1);
+  return b;
+}
+
 function drawMenu(){
   drawBackground();
   buttons = {};
@@ -1019,13 +1155,13 @@ function drawMenu(){
   ctx.textAlign='center';
   ctx.textBaseline='middle';
 
-  var titleY = topOffset + H*0.16;
+  var titleY = topOffset + H*0.14;
   ctx.save();
   ctx.translate(W/2, titleY);
   var tScale = 1 + Math.sin(now*0.002)*0.012;
   ctx.scale(tScale, tScale);
 
-  ctx.font='900 '+Math.round(W*0.13)+'px -apple-system, sans-serif';
+  ctx.font='900 '+Math.round(W*0.12)+'px -apple-system, sans-serif';
   ctx.fillStyle='rgba(0,0,0,0.4)';
   ctx.fillText('BLOCK', 3, 3);
   var tg1 = ctx.createLinearGradient(0, -W*0.08, 0, W*0.08);
@@ -1035,80 +1171,48 @@ function drawMenu(){
   ctx.fillText('BLOCK', 0, 0);
 
   ctx.fillStyle='rgba(0,0,0,0.4)';
-  ctx.fillText('BURST', 3, Math.round(W*0.125)+3);
+  ctx.fillText('BURST', 3, Math.round(W*0.115)+3);
   var tg2 = ctx.createLinearGradient(0, W*0.06, 0, W*0.22);
   tg2.addColorStop(0, '#ffd166');
   tg2.addColorStop(1, '#ff9f68');
   ctx.fillStyle = tg2;
-  ctx.fillText('BURST', 0, Math.round(W*0.125));
+  ctx.fillText('BURST', 0, Math.round(W*0.115));
   ctx.restore();
 
-  var tabY = topOffset + H*0.36;
-  var tabW = W*0.36, tabH = 48, tabGap = 8;
-  var totalTabsW = tabW*2 + tabGap;
-  var tabStartX = (W - totalTabsW)/2;
+  /* 5 mod tab — 2 satır */
+  var tabY1 = topOffset + H*0.31;
+  var tabY2 = tabY1 + 50;
+  var tabH = 42;
+  var tabGap = 6;
+  var row1W = (W - PAD*2 - tabGap*2)/3;
+  var row2W = (W - PAD*2 - tabGap*1)/2;
 
-  var classicTab = {x: tabStartX, y: tabY, w: tabW, h: tabH};
+  buttons.modeClassic = drawModeTab(PAD, tabY1, row1W, tabH, 'CLASSIC', save.mode==='classic', '#5fd3c4');
+  buttons.modeLevel = drawModeTab(PAD + row1W + tabGap, tabY1, row1W, tabH, 'LEVEL', save.mode==='level', th.accent);
+  buttons.modeRush = drawModeTab(PAD + (row1W+tabGap)*2, tabY1, row1W, tabH, 'RUSH', save.mode==='rush', '#ff9f68');
+  buttons.modeZen = drawModeTab(PAD, tabY2, row2W, tabH, 'ZEN', save.mode==='zen', '#b98df2');
+  buttons.modePuzzle = drawModeTab(PAD + row2W + tabGap, tabY2, row2W, tabH, 'PUZZLE', save.mode==='puzzle', '#ffd166');
+
+  /* Mod açıklaması */
+  var modeDesc = '';
   var isClassic = (save.mode === 'classic');
-  if (isClassic){
-    var bgC = ctx.createLinearGradient(0, classicTab.y, 0, classicTab.y+classicTab.h);
-    bgC.addColorStop(0, '#5fd3c4');
-    bgC.addColorStop(1, '#3eb3a3');
-    ctx.fillStyle='rgba(0,0,0,0.35)';
-    roundRect(classicTab.x, classicTab.y+3, classicTab.w, classicTab.h, classicTab.h/2);
-    ctx.fill();
-    ctx.fillStyle=bgC;
-    roundRect(classicTab.x, classicTab.y, classicTab.w, classicTab.h, classicTab.h/2);
-    ctx.fill();
-    ctx.fillStyle='#0a0a14';
-  } else {
-    ctx.fillStyle='rgba(255,255,255,0.06)';
-    roundRect(classicTab.x, classicTab.y, classicTab.w, classicTab.h, classicTab.h/2);
-    ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.12)';
-    ctx.lineWidth=1;
-    roundRect(classicTab.x, classicTab.y, classicTab.w, classicTab.h, classicTab.h/2);
-    ctx.stroke();
-    ctx.fillStyle=th.dim;
-  }
-  ctx.font='800 '+Math.round(W*0.04)+'px -apple-system, sans-serif';
-  ctx.textAlign='center';
-  ctx.textBaseline='middle';
-  ctx.fillText('CLASSIC', classicTab.x+classicTab.w/2, classicTab.y+classicTab.h/2+1);
-  buttons.modeClassic = classicTab;
-
-  var levelTab = {x: tabStartX+tabW+tabGap, y: tabY, w: tabW, h: tabH};
   var isLevel = (save.mode === 'level');
-  if (isLevel){
-    var bgL = ctx.createLinearGradient(0, levelTab.y, 0, levelTab.y+levelTab.h);
-    bgL.addColorStop(0, th.accent2);
-    bgL.addColorStop(1, th.accent);
-    ctx.fillStyle='rgba(0,0,0,0.35)';
-    roundRect(levelTab.x, levelTab.y+3, levelTab.w, levelTab.h, levelTab.h/2);
-    ctx.fill();
-    ctx.fillStyle=bgL;
-    roundRect(levelTab.x, levelTab.y, levelTab.w, levelTab.h, levelTab.h/2);
-    ctx.fill();
-    ctx.fillStyle='#ffffff';
-  } else {
-    ctx.fillStyle='rgba(255,255,255,0.06)';
-    roundRect(levelTab.x, levelTab.y, levelTab.w, levelTab.h, levelTab.h/2);
-    ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.12)';
-    ctx.lineWidth=1;
-    roundRect(levelTab.x, levelTab.y, levelTab.w, levelTab.h, levelTab.h/2);
-    ctx.stroke();
-    ctx.fillStyle=th.dim;
-  }
-  ctx.font='800 '+Math.round(W*0.04)+'px -apple-system, sans-serif';
-  ctx.fillText('LEVEL', levelTab.x+levelTab.w/2, levelTab.y+levelTab.h/2+1);
-  buttons.modeLevel = levelTab;
+  var isRush = (save.mode === 'rush');
+  var isZen = (save.mode === 'zen');
+  var isPuzzle = (save.mode === 'puzzle');
+  if (isClassic) modeDesc = 'Endless — just score';
+  else if (isLevel) modeDesc = 'Hit target to level up';
+  else if (isRush) modeDesc = '60 seconds — max score';
+  else if (isZen) modeDesc = 'Relax — board auto-clears';
+  else if (isPuzzle) modeDesc = 'Clear the board in 20 moves';
 
   ctx.fillStyle = th.dim;
   ctx.font='600 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-  var modeDesc = isClassic ? 'Endless — just score' : 'Hit target to level up';
-  ctx.fillText(modeDesc, W/2, tabY + tabH + 16);
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(modeDesc, W/2, tabY2 + tabH + 14);
 
+  /* Rekor badge */
   var badgeW = W*0.72, badgeH = 72;
   var bx = (W-badgeW)/2, by = topOffset + H*0.5;
   drawGlassPanel(bx, by, badgeW, badgeH, 22);
@@ -1116,12 +1220,13 @@ function drawMenu(){
   ctx.textAlign='center';
   ctx.fillStyle = th.dim;
   ctx.font='700 '+Math.round(W*0.026)+'px -apple-system, sans-serif';
+
   if (isClassic){
     ctx.fillText('BEST SCORE', W/2, by+18);
     ctx.fillStyle = '#5fd3c4';
     ctx.font='900 '+Math.round(W*0.058)+'px -apple-system, sans-serif';
     ctx.fillText(String(save.bestClassic), W/2, by+50);
-  } else {
+  } else if (isLevel){
     ctx.fillText('LEVEL', W*0.32, by+18);
     ctx.fillText('BEST', W*0.68, by+18);
     ctx.fillStyle = th.accent2;
@@ -1130,12 +1235,29 @@ function drawMenu(){
     ctx.fillStyle = '#ffd166';
     ctx.font='900 '+Math.round(W*0.052)+'px -apple-system, sans-serif';
     ctx.fillText(String(save.best), W*0.68, by+48);
+  } else if (isRush){
+    ctx.fillText('BEST RUSH', W/2, by+18);
+    ctx.fillStyle = '#ff9f68';
+    ctx.font='900 '+Math.round(W*0.058)+'px -apple-system, sans-serif';
+    ctx.fillText(String(save.bestRush), W/2, by+50);
+  } else if (isZen){
+    ctx.fillStyle = '#b98df2';
+    ctx.font='700 '+Math.round(W*0.05)+'px -apple-system, sans-serif';
+    ctx.fillText('No score. No rush.', W/2, by+22);
+    ctx.font='600 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
+    ctx.fillStyle = th.dim;
+    ctx.fillText('Just enjoy the puzzle', W/2, by+50);
+  } else if (isPuzzle){
+    ctx.fillText('BEST PUZZLE', W/2, by+18);
+    ctx.fillStyle = '#ffd166';
+    ctx.font='900 '+Math.round(W*0.058)+'px -apple-system, sans-serif';
+    ctx.fillText(String(save.bestPuzzle), W/2, by+50);
   }
 
   var bw=W*0.68, bh=Math.max(64, W*0.17);
   var bx2=(W-bw)/2;
   var b1={x:bx2, y:topOffset + H*0.63, w:bw, h:bh};
-  var playColor = isClassic ? '#5fd3c4' : th.accent;
+  var playColor = modeColor();
   drawButton(b1, 'PLAY', playColor, '#ffffff', W*0.065);
   buttons.play = b1;
 
@@ -1190,18 +1312,21 @@ function drawHowTo(){
     'Fill a full row or column',
     'to make it burst and score points.',
     '',
-    'Burst quickly in a row',
-    'to build a COMBO multiplier.',
+    'COMBO builds when you burst',
+    'several times in a row.',
     '',
     'CLASSIC: endless score mode.',
-    'LEVEL: hit the target to advance.',
+    'LEVEL: hit target to advance.',
+    'RUSH: 60 seconds — max score.',
+    'ZEN: no stress, board auto-clears.',
+    'PUZZLE: clear board in 20 moves.',
     '',
     'No moves left = game over.'
   ];
-  ctx.font='500 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
+  ctx.font='500 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
   ctx.fillStyle=th.dim;
-  var y=safeTop + H*0.16;
-  var lh=Math.round(W*0.05);
+  var y=safeTop + H*0.15;
+  var lh=Math.round(W*0.045);
   for (var i=0;i<lines.length;i++){ ctx.fillText(lines[i], W/2, y); y+=lh; }
   drawBackButton();
 }
@@ -1272,7 +1397,11 @@ function drawPauseOverlay(){
 
   ctx.fillStyle = th.dim;
   ctx.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-  ctx.fillText('Score: '+score, W/2, cy+cardH*0.3);
+  var subInfo = '';
+  if (save.mode === 'rush') subInfo = 'Time left: ' + rushSecondsLeft + 's';
+  else if (save.mode === 'puzzle') subInfo = 'Moves left: ' + puzzleMoves;
+  else subInfo = 'Score: ' + score;
+  ctx.fillText(subInfo, W/2, cy+cardH*0.3);
 
   var bw=cardW*0.72, bh=Math.max(56, W*0.14);
   var bx=cx+(cardW-bw)/2;
@@ -1302,32 +1431,41 @@ function drawGameOverOverlay(){
   ctx.font='700 '+Math.round(W*0.034)+'px -apple-system, sans-serif';
   ctx.fillText('GAME OVER', W/2, cy+45);
 
-  ctx.save();
-  ctx.translate(W/2, cy+cardH*0.22);
-  var sc = 1 + Math.sin(now*0.004)*0.02;
-  ctx.scale(sc, sc);
-  var tg = ctx.createLinearGradient(0,-W*0.08,0,W*0.08);
-  tg.addColorStop(0, '#ffd166');
-  tg.addColorStop(1, '#ff9f68');
-  ctx.fillStyle=tg;
-  ctx.font='900 '+Math.round(W*0.17)+'px -apple-system, sans-serif';
-  ctx.fillText(String(score), 0, 0);
-  ctx.restore();
+  if (save.mode !== 'zen'){
+    ctx.save();
+    ctx.translate(W/2, cy+cardH*0.22);
+    var sc = 1 + Math.sin(now*0.004)*0.02;
+    ctx.scale(sc, sc);
+    var tg = ctx.createLinearGradient(0,-W*0.08,0,W*0.08);
+    tg.addColorStop(0, '#ffd166');
+    tg.addColorStop(1, '#ff9f68');
+    ctx.fillStyle=tg;
+    ctx.font='900 '+Math.round(W*0.17)+'px -apple-system, sans-serif';
+    ctx.fillText(String(score), 0, 0);
+    ctx.restore();
 
-  var bestVal = currentBest();
-  if (score >= bestVal && score > 0){
-    ctx.fillStyle = th.accent2;
-    ctx.font='800 '+Math.round(W*0.042)+'px -apple-system, sans-serif';
-    ctx.fillText('★ NEW RECORD ★', W/2, cy+cardH*0.36);
+    var bestVal = currentBest();
+    if (score >= bestVal && score > 0){
+      ctx.fillStyle = th.accent2;
+      ctx.font='800 '+Math.round(W*0.042)+'px -apple-system, sans-serif';
+      ctx.fillText('★ NEW RECORD ★', W/2, cy+cardH*0.36);
+    } else {
+      ctx.fillStyle = th.dim;
+      ctx.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
+      ctx.fillText('Best: '+bestVal, W/2, cy+cardH*0.36);
+    }
   } else {
+    ctx.fillStyle = th.text;
+    ctx.font='800 '+Math.round(W*0.06)+'px -apple-system, sans-serif';
+    ctx.fillText('Nice session ✦', W/2, cy+cardH*0.28);
     ctx.fillStyle = th.dim;
-    ctx.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-    ctx.fillText('Best: '+bestVal, W/2, cy+cardH*0.36);
+    ctx.font='600 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
+    ctx.fillText('Rest well, come back anytime', W/2, cy+cardH*0.36);
   }
 
   ctx.fillStyle = 'rgba(255,255,255,0.25)';
   ctx.font='600 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-  ctx.fillText((save.mode === 'classic' ? 'CLASSIC' : 'LEVEL '+currentLevel()), W/2, cy+cardH*0.42);
+  ctx.fillText(modeLabel(), W/2, cy+cardH*0.42);
 
   var bw=cardW*0.78, bh=Math.max(56, W*0.14);
   var bx=cx+(cardW-bw)/2;
@@ -1339,7 +1477,8 @@ function drawGameOverOverlay(){
 
   y += bh + 12;
 
-  if (!continueUsed){
+  /* Zen ve Puzzle'da reklam devam yok */
+  if (!continueUsed && save.mode !== 'zen' && save.mode !== 'puzzle'){
     var b2={x:bx, y:y, w:bw, h:bh};
     drawButton(b2, '📺 WATCH AD → CONTINUE', '#ff9f68', '#ffffff', W*0.034);
     buttons.continue = b2;
@@ -1488,6 +1627,18 @@ function handleButton(pos){
       save.mode='level'; persist(); Sfx.click();
       return true;
     }
+    if (inside(buttons.modeRush, pos.x, pos.y)){
+      save.mode='rush'; persist(); Sfx.click();
+      return true;
+    }
+    if (inside(buttons.modeZen, pos.x, pos.y)){
+      save.mode='zen'; persist(); Sfx.click();
+      return true;
+    }
+    if (inside(buttons.modePuzzle, pos.x, pos.y)){
+      save.mode='puzzle'; persist(); Sfx.click();
+      return true;
+    }
     if (inside(buttons.settings, pos.x, pos.y)){ Sfx.click(); STATE='settings'; return true; }
     if (inside(buttons.howto, pos.x, pos.y)){ Sfx.click(); STATE='howto'; return true; }
     if (inside(buttons.play, pos.x, pos.y)){ initAudio(); Sfx.click(); startGame(); return true; }
@@ -1573,6 +1724,48 @@ function onMove(e){
   updateDrag(getPos(e));
 }
 
+/* ============ ZEN OTOMATİK TEMİZLE ============ */
+function zenClearBottomRows(count){
+  var cleared = [];
+  for (var c=0;c<N;c++){
+    for (var r=N-1; r>=0 && cleared.length < count*N; r--){
+      if (grid[r][c] !== null){
+        cleared.push([r,c]);
+      }
+    }
+  }
+  for (var i=0;i<cleared.length;i++){
+    var rr=cleared[i][0], cc=cleared[i][1];
+    addVanishing(boardX+cc*cell, boardY+rr*cell, grid[rr][cc]);
+    spawnParticles(boardX+cc*cell, boardY+rr*cell, cell, grid[rr][cc]);
+    grid[rr][cc] = null;
+  }
+  return cleared.length;
+}
+
+/* ============ PUZZLE BAŞLANGIÇ TAHTASI ============ */
+function setupPuzzleBoard(){
+  grid = [];
+  for (var r=0;r<N;r++){
+    var row=[];
+    for (var c=0;c<N;c++) row.push(null);
+    grid.push(row);
+  }
+  /* Rastgele 20 blok koy (üst 5 satırda) */
+  var placed = 0;
+  var attempts = 0;
+  while (placed < 20 && attempts < 200){
+    attempts++;
+    var r = Math.floor(Math.random() * 5);
+    var c = Math.floor(Math.random() * N);
+    if (grid[r][c] === null){
+      grid[r][c] = COLORS[(Math.random()*COLORS.length)|0];
+      placed++;
+    }
+  }
+}
+
+/* ============ HAMLE SONRASI KONTROL ============ */
 function onUp(e){
   if (STATE!=='playing' || !drag) return;
   e.preventDefault();
@@ -1637,15 +1830,36 @@ function onUp(e){
     if (now-lastClear > 1800) combo = 0;
   }
 
-  if (!pieces[0] && !pieces[1] && !pieces[2]) newPieces();
-
-  if (save.mode === 'classic'){
-    if (score > save.bestClassic){ save.bestClassic = score; persist(); }
-  } else {
-    if (score > save.best){ save.best = score; persist(); }
+  /* PUZZLE: hamle azalt */
+  if (save.mode === 'puzzle'){
+    puzzleMoves--;
   }
+
+  /* Yeni bloklar — Puzzle'da yok */
+  if (save.mode !== 'puzzle'){
+    if (!pieces[0] && !pieces[1] && !pieces[2]) newPieces();
+  } else {
+    /* Puzzle'da parça bitince yenilenir mi? Hayır — 3 parça bitince oyun biter */
+    if (!pieces[0] && !pieces[1] && !pieces[2]){
+      /* Parçalar bitti, hamle de bittiyse oyun biter, yoksa yeni ver */
+      if (puzzleMoves > 0){
+        newPieces();
+      }
+    }
+  }
+
+  /* Rekor güncelle (Zen hariç) */
+  if (modeIsScored()){
+    var current = currentBest();
+    if (score > current){
+      setCurrentBest(score);
+      persist();
+    }
+  }
+
   layoutTray();
 
+  /* LEVEL tamamlanma */
   if (save.mode === 'level' && score >= currentTarget()){
     STATE = 'levelComplete';
     spawnConfetti();
@@ -1654,6 +1868,64 @@ function onUp(e){
     return;
   }
 
+  /* ZEN: tahta dolarsa alt satırları temizle */
+  if (save.mode === 'zen'){
+    if (!anyMove()){
+      zenClearBottomRows(2);
+      if (!pieces[0] && !pieces[1] && !pieces[2]) newPieces();
+      layoutTray();
+      if (!anyMove()){
+        /* Hala yoksa 4 satır daha temizle */
+        zenClearBottomRows(3);
+        if (!pieces[0] && !pieces[1] && !pieces[2]) newPieces();
+        layoutTray();
+      }
+      spawnFloater(W/2, H*0.4, '✦ CLEARED ✦', '#b98df2', true);
+      return;
+    }
+    return;
+  }
+
+  /* PUZZLE: hamle bitti mi? */
+  if (save.mode === 'puzzle'){
+    if (puzzleMoves <= 0){
+      STATE = 'gameover';
+      save.totalGames++;
+      persist();
+      Sfx.over();
+      vib([100,60,100]);
+      return;
+    }
+    /* Puzzle'da tahta boşaldıysa kazan! */
+    var empty = true;
+    for (var rr2=0;rr2<N;rr2++){
+      for (var cc2=0;cc2<N;cc2++){
+        if (grid[rr2][cc2] !== null){ empty = false; break; }
+      }
+      if (!empty) break;
+    }
+    if (empty){
+      /* Bonus puan */
+      score += puzzleMoves * 50;
+      STATE = 'gameover';
+      save.totalGames++;
+      persist();
+      Sfx.levelUp();
+      vib([40,30,40,30,120]);
+      return;
+    }
+    if (!anyMove() && (!pieces[0] && !pieces[1] && !pieces[2])){
+      newPieces();
+    }
+    return;
+  }
+
+  /* RUSH: normal akış, süre oyun döngüsünde */
+  if (save.mode === 'rush'){
+    return;
+  }
+
+  /* CLASSIC ve LEVEL: oyun bitti mi? */
   if (!anyMove()){
     STATE = 'gameover';
     save.totalGames++;
@@ -1708,12 +1980,6 @@ if (window.visualViewport){
 
 /* ============ BAŞLAT ============ */
 function startGame(){
-  grid = [];
-  for (var r=0;r<N;r++){
-    var row=[];
-    for (var c=0;c<N;c++) row.push(null);
-    grid.push(row);
-  }
   score=0;
   displayScore=0;
   drag=null;
@@ -1729,15 +1995,59 @@ function startGame(){
   boardGlow=0;
   continueUsed = false;
   now = performance.now();
+
+  if (save.mode === 'puzzle'){
+    setupPuzzleBoard();
+    puzzleMoves = PUZZLE_MOVES;
+  } else {
+    grid = [];
+    for (var r=0;r<N;r++){
+      var row=[];
+      for (var c=0;c<N;c++) row.push(null);
+      grid.push(row);
+    }
+  }
+
+  if (save.mode === 'rush'){
+    rushSecondsLeft = RUSH_DURATION;
+    rushTimeLeft = RUSH_DURATION * 1000;
+    rushLastTick = now;
+  }
+
   newPieces();
   resize();
   STATE = 'playing';
+}
+
+/* ============ RUSH SÜRE DÖNGÜSÜ ============ */
+function updateRushTimer(){
+  if (STATE !== 'playing') return;
+  if (save.mode !== 'rush') return;
+  var delta = now - rushLastTick;
+  rushLastTick = now;
+  rushTimeLeft -= delta;
+  var newSec = Math.max(0, Math.ceil(rushTimeLeft / 1000));
+  if (newSec !== rushSecondsLeft){
+    rushSecondsLeft = newSec;
+    if (rushSecondsLeft <= 5 && rushSecondsLeft > 0){
+      Sfx.tick();
+    }
+  }
+  if (rushTimeLeft <= 0){
+    STATE = 'gameover';
+    save.totalGames++;
+    if (score > save.bestRush){ save.bestRush = score; }
+    persist();
+    Sfx.over();
+    vib([100,60,100]);
+  }
 }
 
 function loop(){
   requestAnimationFrame(loop);
   try {
     now = performance.now();
+    updateRushTimer();
     updateEffects();
     render();
   } catch(err){}
