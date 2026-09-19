@@ -375,39 +375,27 @@ function getBlockDrawBox(x, y, size){
   var glowPad = size * GLOW_RATIO;
   return { x: x - glowPad, y: y - glowPad, w: size + glowPad*2, h: size + glowPad*2 };
 }
-
-/* YENİ: JELLY/CANDY tarzı blok çizimi */
 function drawBlockRaw(c, x, y, size, color){
   var gap = Math.max(1, size*0.04);
   var s = size-gap*2;
   if (s <= 0) return;
-  var rad = s*0.36;  /* daha yuvarlak köşeler */
+  var rad = s*0.36;
   var bx = x+gap, by = y+gap;
-
-  /* Ana gövde — daha yumuşak gradient, üstten alta */
   var g = c.createLinearGradient(bx, by, bx, by+s);
   g.addColorStop(0, lighten(color, 0.35));
   g.addColorStop(0.45, color);
   g.addColorStop(1, darken(color, 0.25));
   c.fillStyle = g;
   roundRectC(c, bx, by, s, s, rad); c.fill();
-
-  /* Alt iç gölge — daha yumuşak hacim hissi */
   var gd = c.createLinearGradient(bx, by+s*0.5, bx, by+s);
   gd.addColorStop(0, 'rgba(0,0,0,0)');
   gd.addColorStop(1, 'rgba(0,0,0,0.18)');
   c.fillStyle = gd;
   roundRectC(c, bx+s*0.05, by+s*0.05, s-s*0.1, s-s*0.1, rad*0.85); c.fill();
-
-  /* Büyük üst parlama — daha yumuşak, daha doğal */
   c.fillStyle = 'rgba(255,255,255,0.5)';
   roundRectC(c, bx+s*0.16, by+s*0.12, s*0.68, s*0.26, s*0.13); c.fill();
-
-  /* İkinci küçük parlama — jelly parlaması */
   c.fillStyle = 'rgba(255,255,255,0.35)';
   roundRectC(c, bx+s*0.28, by+s*0.18, s*0.4, s*0.08, s*0.04); c.fill();
-
-  /* Üst kenarda çok ince bir highlight çizgisi */
   c.fillStyle = 'rgba(255,255,255,0.28)';
   roundRectC(c, bx+s*0.15, by+s*0.08, s*0.7, s*0.04, s*0.02); c.fill();
 }
@@ -526,16 +514,38 @@ function resize(){
   initBgParticles();
 }
 
+/* YENİ: Tray taşma engellendi */
 function layoutTray(){
   if (!pieces) return;
   var slotW = W/3;
+  var trayPadInner = 6;
+  var trayLeft = PAD + trayPadInner;
+  var trayRight = W - PAD - trayPadInner;
+  var trayTop = trayY + trayPadInner;
+  var trayBottom = trayY + trayH - trayPadInner;
+  var trayInnerW = trayRight - trayLeft;
+  var trayInnerH = trayBottom - trayTop;
+
   for (var i=0;i<3;i++){
     var p=pieces[i];
     if (!p) continue;
-    var pc = Math.min((slotW-22)/p.w, (trayH-16)/p.h, cell*0.72);
-    p.drawCell = (isFinite(pc)&&pc>4) ? pc : 30;
-    p.trayX = i*slotW + (slotW-p.w*p.drawCell)/2;
-    p.trayY = trayY + (trayH-p.h*p.drawCell)/2;
+    var slotLeft = trayLeft + i*(trayInnerW/3);
+    var slotW2 = trayInnerW/3;
+    var pc = Math.min((slotW2-14)/p.w, (trayInnerH-10)/p.h, cell*0.72);
+    if (!isFinite(pc) || pc < 4) pc = 4;
+    p.drawCell = pc;
+    var pieceW = p.w*pc;
+    var pieceH = p.h*pc;
+    var cx = slotLeft + slotW2/2;
+    var cy = trayTop + trayInnerH/2;
+    var tx = cx - pieceW/2;
+    var ty = cy - pieceH/2;
+    if (tx < trayLeft) tx = trayLeft;
+    if (tx + pieceW > trayRight) tx = trayRight - pieceW;
+    if (ty < trayTop) ty = trayTop;
+    if (ty + pieceH > trayBottom) ty = trayBottom - pieceH;
+    p.trayX = tx;
+    p.trayY = ty;
   }
 }
 
@@ -740,12 +750,8 @@ function drawHUD(){
     var moveColor = puzzleMoves <= 5 ? '#ff6b6b' : '#ffd166';
     ctx.fillStyle=moveColor;
     roundRect(barX, barY, barW*moveProg, barH, 4); ctx.fill();
-  } else {
-    ctx.textAlign='right';
-    ctx.fillStyle='rgba(255,255,255,0.3)';
-    ctx.font='700 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-    ctx.fillText('inf', W-PAD-42, topY + 26 + numF + Math.round(W*0.048) + 6);
   }
+  /* Classic'te alt satırda hiçbir şey yok — inf kaldırıldı */
 
   if (combo > 1){
     var pillW = W*0.32, pillH = 34;
@@ -1452,7 +1458,6 @@ function onUp(e){
     return;
   }
 
-  /* YENİ: RUSH BUG DÜZELTİLDİ */
   if (save.mode === 'rush'){
     if (!anyMove()){
       STATE = 'gameover';
