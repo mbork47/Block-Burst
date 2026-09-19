@@ -96,6 +96,7 @@ var rushTimeLeft = 0;
 var rushLastTick = 0;
 var rushSecondsLeft = 60;
 var RUSH_DURATION = 60;
+var RUSH_COMBO_BONUS_PER_LEVEL = 5;
 
 var puzzleMoves = 20;
 var PUZZLE_MOVES = 20;
@@ -256,6 +257,7 @@ var Sfx = {
   combo: function(c){ if (!save.soundOn) return; var base=523.25; var steps=Math.min(6,c); var scale=[0,2,4,7,9,12]; for (var i=0;i<steps;i++){ var semi=scale[i%scale.length]; var f=base*Math.pow(2,semi/12); var t=i*0.055; layer(f,0.14,'triangle',0.06,t,{attack:0.005}); layer(f*2,0.1,'sine',0.02,t,{attack:0.005}); } },
   levelUp: function(){ if (!save.soundOn) return; var notes=[523.25,659.25,783.99,1046.5,1318.5,1568]; for (var i=0;i<notes.length;i++){ var t=i*0.09; layer(notes[i],0.4,'triangle',0.08,t,{attack:0.01}); layer(notes[i]*2,0.3,'sine',0.028,t,{attack:0.01}); } },
   over: function(){ if (!save.soundOn) return; var notes=[392,349.23,293.66,220]; for (var i=0;i<notes.length;i++){ var t=i*0.16; layer(notes[i],0.3,'sawtooth',0.055,t,{filter:'lowpass',filterFreq:1400,attack:0.015}); layer(notes[i]*0.5,0.35,'sine',0.04,t,{attack:0.015}); } },
+  timeBonus: function(){ if (!save.soundOn) return; layer(880,0.08,'sine',0.06,0,{freqEnd:1320,attack:0.003}); layer(1320,0.1,'triangle',0.04,0.05,{freqEnd:1760}); },
   tick: function(){ if (!save.soundOn) return; layer(1000,0.03,'sine',0.04,0,{freqEnd:800,attack:0.002}); },
   click: function(){ if (!save.soundOn) return; layer(1400,0.04,'sine',0.045,0,{freqEnd:900,attack:0.002}); }
 };
@@ -450,7 +452,33 @@ function makePiece(){
   }
   return { cells: shape, color: COLORS[(Math.random()*COLORS.length)|0], w:maxC+1, h:maxR+1, bornAt:now, drawCell:30, trayX:0, trayY:0 };
 }
-function newPieces(){ pieces = [makePiece(), makePiece(), makePiece()]; layoutTray(); }
+
+/* YENİ: Bu parça mevcut tahtaya herhangi bir yere sığıyor mu? */
+function canPlaceAnywhere(p){
+  if (!p) return false;
+  for (var r=0;r<N;r++) for (var c=0;c<N;c++) if (canPlace(p,r,c)) return true;
+  return false;
+}
+
+/* YENİ: Puzzle için akıllı parça üretimi — sığan parçalar gelir */
+function newPieces(){
+  if (save.mode === 'puzzle'){
+    var newSet = [];
+    for (var i=0;i<3;i++){
+      var chosen = null;
+      for (var attempt=0; attempt<40; attempt++){
+        var candidate = makePiece();
+        if (canPlaceAnywhere(candidate)){ chosen = candidate; break; }
+      }
+      if (!chosen) chosen = makePiece();
+      newSet.push(chosen);
+    }
+    pieces = newSet;
+  } else {
+    pieces = [makePiece(), makePiece(), makePiece()];
+  }
+  layoutTray();
+}
 
 function getViewportH(){
   var h = window.innerHeight||600;
@@ -689,7 +717,7 @@ function drawHUD(){
     var barX = PAD+2, barY = ly+8;
     ctx.fillStyle='rgba(255,255,255,0.1)';
     roundRect(barX, barY, barW, barH, 4); ctx.fill();
-    var timeProg = Math.max(0, rushSecondsLeft / RUSH_DURATION);
+    var timeProg = Math.min(1, rushSecondsLeft / RUSH_DURATION);
     var rushBarColor = rushSecondsLeft <= 10 ? '#ff6b6b' : '#ff9f68';
     ctx.fillStyle=rushBarColor;
     roundRect(barX, barY, barW*timeProg, barH, 4); ctx.fill();
@@ -901,7 +929,7 @@ function drawMenu(){
   var modeDesc = '';
   if (save.mode === 'classic') modeDesc = 'Endless - just score';
   else if (save.mode === 'level') modeDesc = 'Hit target to level up';
-  else if (save.mode === 'rush') modeDesc = '60 seconds - max score';
+  else if (save.mode === 'rush') modeDesc = '60s - combos give extra time';
   else if (save.mode === 'puzzle') modeDesc = 'Clear the board in 20 moves';
 
   ctx.fillStyle = th.dim;
@@ -1003,7 +1031,7 @@ function drawHowTo(){
     '',
     'CLASSIC: endless score mode.',
     'LEVEL: hit target to advance.',
-    'RUSH: 60 seconds - max score.',
+    'RUSH: 60s - combos add extra time!',
     'PUZZLE: clear board in 20 moves.'
   ];
   ctx.font='500 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
@@ -1343,6 +1371,16 @@ function onUp(e){
     boardGlow = 1;
     spawnFloater(boardX+boardSize/2, boardY+boardSize/2, '+'+gain, '#ffd166', true);
     if (combo > 1) spawnFloater(boardX+boardSize/2, boardY+boardSize/2+cell*1.8, 'COMBO x'+combo, '#ff9f68', false);
+
+    if (save.mode === 'rush' && combo > 1){
+      var bonusSec = Math.min(combo, 5) * RUSH_COMBO_BONUS_PER_LEVEL;
+      rushTimeLeft += bonusSec * 1000;
+      rushSecondsLeft = Math.max(rushSecondsLeft, Math.ceil(rushTimeLeft / 1000));
+      spawnFloater(boardX+boardSize/2, boardY+boardSize/2-cell*2, '+'+bonusSec+'s', '#5fd3c4', false);
+      Sfx.timeBonus();
+      vib(25);
+    }
+
     shake = Math.min(11, 5+linesCount*2);
     Sfx.clear(linesCount);
     if (combo > 1) Sfx.combo(combo);
@@ -1392,6 +1430,14 @@ function onUp(e){
       persist();
       Sfx.levelUp();
       vib([40,30,40,30,120]);
+      return;
+    }
+    if (!anyMove()){
+      STATE = 'gameover';
+      save.totalGames++;
+      persist();
+      Sfx.over();
+      vib([100,60,100]);
       return;
     }
     return;
@@ -1531,7 +1577,7 @@ window.addEventListener('load', function(){ setTimeout(resize, 200); });
 })();
 </script>
 <script>
-if ('serviceWorker' in navigator) {
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('sw.js').catch(function(){});
   });
