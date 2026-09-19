@@ -30,7 +30,7 @@ var ctx = canvas.getContext('2d');
 var N = 8;
 var PAD = 16;
 
-var COLORS = ['#ff7b8a','#5fd3c4','#ffc94d','#8ee0b4','#b98df2','#ffa676','#7bc8ec','#f48fbb'];
+var COLORS = ['#ff4757','#00d4b4','#ffb703','#4ade80','#a855f7','#ff7f2a','#3b82f6','#ec4899'];
 
 var SHAPE_DEFS = [
   {s:[[0,0]],w:3},
@@ -343,7 +343,7 @@ function roundRectC(c,x,y,w,h,r){
   c.closePath();
 }
 
-var GLOW_RATIO = 0.12;
+var GLOW_RATIO = 0.05;
 function getBlockSprite(color, size){
   if (!isFinite(size) || size < 2) return null;
   var roundedSize = Math.max(2, Math.round(size));
@@ -358,7 +358,7 @@ function getBlockSprite(color, size){
   var cx = c.getContext('2d');
   try {
     cx.shadowColor = color;
-    cx.shadowBlur = glowPad * 2.2;
+    cx.shadowBlur = glowPad * 1.8;
     cx.shadowOffsetX = 0;
     cx.shadowOffsetY = 0;
     drawBlockRaw(cx, glowPad, glowPad, roundedSize, color);
@@ -380,21 +380,21 @@ function drawBlockRaw(c, x, y, size, color){
   var rad = s*0.30;
   var bx = x+gap, by = y+gap;
   var g = c.createLinearGradient(bx, by, bx, by+s);
-  g.addColorStop(0, lighten(color,0.30));
+  g.addColorStop(0, lighten(color, 0.42));
   g.addColorStop(0.5, color);
-  g.addColorStop(1, darken(color,0.20));
+  g.addColorStop(1, darken(color, 0.22));
   c.fillStyle = g;
   roundRectC(c, bx, by, s, s, rad); c.fill();
   var gd = c.createLinearGradient(bx, by+s*0.55, bx, by+s);
   gd.addColorStop(0, 'rgba(0,0,0,0)');
-  gd.addColorStop(1, 'rgba(0,0,0,0.16)');
+  gd.addColorStop(1, 'rgba(0,0,0,0.14)');
   c.fillStyle = gd;
   roundRectC(c, bx, by, s, s, rad); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.55)';
+  c.fillStyle = 'rgba(255,255,255,0.62)';
   roundRectC(c, bx+s*0.14, by+s*0.1, s*0.72, s*0.3, s*0.15); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.4)';
+  c.fillStyle = 'rgba(255,255,255,0.45)';
   roundRectC(c, bx+s*0.35, by+s*0.16, s*0.3, s*0.07, s*0.035); c.fill();
-  c.strokeStyle = 'rgba(255,255,255,0.22)';
+  c.strokeStyle = 'rgba(255,255,255,0.28)';
   c.lineWidth = Math.max(1, s*0.018);
   roundRectC(c, bx+s*0.02, by+s*0.02, s-s*0.04, s-s*0.04, rad*0.95); c.stroke();
 }
@@ -547,7 +547,7 @@ function spawnFloater(x,y,text,color,big){ floaters.push({x:x,y:y,text:text,colo
 function addVanishing(x,y,color){ vanishing.push({x:x,y:y,color:color,start:now,dur:280}); }
 function addPulse(x,y,color){ pulses.push({x:x,y:y,color:color,start:now,dur:380}); }
 function spawnConfetti(){
-  var colors = ['#ff7b8a','#5fd3c4','#ffc94d','#8ee0b4','#b98df2','#ffa676','#7bc8ec','#f48fbb'];
+  var colors = ['#ff4757','#00d4b4','#ffb703','#4ade80','#a855f7','#ff7f2a','#3b82f6','#ec4899'];
   for (var i=0;i<50;i++){
     confetti.push({ x: W/2 + (Math.random()-0.5)*W*0.6, y: H*0.3 + (Math.random()-0.5)*H*0.2, vx: (Math.random()-0.5)*8, vy: -3-Math.random()*6, rot: Math.random()*Math.PI*2, vr: (Math.random()-0.5)*0.4, w: 6+Math.random()*6, h: 8+Math.random()*8, color: colors[(Math.random()*colors.length)|0], life: 1, decay: 0.006+Math.random()*0.004 });
   }
@@ -959,8 +959,8 @@ function drawMenu(){
   drawGlassPanel(sb.x, sb.y, sb.w, sb.h, 16);
   ctx.fillStyle = th.text;
   ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.font='700 '+Math.round(iconSize*0.5)+'px -apple-system, sans-serif';
-  ctx.fillText('?', sb.x+sb.w/2, sb.y+sb.h/2+2);
+  ctx.font='700 '+Math.round(iconSize*0.55)+'px -apple-system, sans-serif';
+  ctx.fillText('\u2699', sb.x+sb.w/2, sb.y+sb.h/2+2);
   buttons.settings = sb;
 
   var hb = {x:iconX+iconSize+iconGap, y:iconY, w:iconSize, h:iconSize};
