@@ -345,7 +345,7 @@ function roundRectC(c,x,y,w,h,r){
   c.closePath();
 }
 
-var GLOW_RATIO = 0.05;
+var GLOW_RATIO = 0.06;
 function getBlockSprite(color, size){
   if (!isFinite(size) || size < 2) return null;
   var roundedSize = Math.max(2, Math.round(size));
@@ -360,7 +360,7 @@ function getBlockSprite(color, size){
   var cx = c.getContext('2d');
   try {
     cx.shadowColor = color;
-    cx.shadowBlur = glowPad * 1.8;
+    cx.shadowBlur = glowPad * 1.6;
     cx.shadowOffsetX = 0;
     cx.shadowOffsetY = 0;
     drawBlockRaw(cx, glowPad, glowPad, roundedSize, color);
@@ -375,30 +375,41 @@ function getBlockDrawBox(x, y, size){
   var glowPad = size * GLOW_RATIO;
   return { x: x - glowPad, y: y - glowPad, w: size + glowPad*2, h: size + glowPad*2 };
 }
+
+/* YENİ: JELLY/CANDY tarzı blok çizimi */
 function drawBlockRaw(c, x, y, size, color){
-  var gap = Math.max(1, size*0.045);
+  var gap = Math.max(1, size*0.04);
   var s = size-gap*2;
   if (s <= 0) return;
-  var rad = s*0.30;
+  var rad = s*0.36;  /* daha yuvarlak köşeler */
   var bx = x+gap, by = y+gap;
+
+  /* Ana gövde — daha yumuşak gradient, üstten alta */
   var g = c.createLinearGradient(bx, by, bx, by+s);
-  g.addColorStop(0, lighten(color, 0.42));
-  g.addColorStop(0.5, color);
-  g.addColorStop(1, darken(color, 0.22));
+  g.addColorStop(0, lighten(color, 0.35));
+  g.addColorStop(0.45, color);
+  g.addColorStop(1, darken(color, 0.25));
   c.fillStyle = g;
   roundRectC(c, bx, by, s, s, rad); c.fill();
-  var gd = c.createLinearGradient(bx, by+s*0.55, bx, by+s);
+
+  /* Alt iç gölge — daha yumuşak hacim hissi */
+  var gd = c.createLinearGradient(bx, by+s*0.5, bx, by+s);
   gd.addColorStop(0, 'rgba(0,0,0,0)');
-  gd.addColorStop(1, 'rgba(0,0,0,0.14)');
+  gd.addColorStop(1, 'rgba(0,0,0,0.18)');
   c.fillStyle = gd;
-  roundRectC(c, bx, by, s, s, rad); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.62)';
-  roundRectC(c, bx+s*0.14, by+s*0.1, s*0.72, s*0.3, s*0.15); c.fill();
-  c.fillStyle = 'rgba(255,255,255,0.45)';
-  roundRectC(c, bx+s*0.35, by+s*0.16, s*0.3, s*0.07, s*0.035); c.fill();
-  c.strokeStyle = 'rgba(255,255,255,0.28)';
-  c.lineWidth = Math.max(1, s*0.018);
-  roundRectC(c, bx+s*0.02, by+s*0.02, s-s*0.04, s-s*0.04, rad*0.95); c.stroke();
+  roundRectC(c, bx+s*0.05, by+s*0.05, s-s*0.1, s-s*0.1, rad*0.85); c.fill();
+
+  /* Büyük üst parlama — daha yumuşak, daha doğal */
+  c.fillStyle = 'rgba(255,255,255,0.5)';
+  roundRectC(c, bx+s*0.16, by+s*0.12, s*0.68, s*0.26, s*0.13); c.fill();
+
+  /* İkinci küçük parlama — jelly parlaması */
+  c.fillStyle = 'rgba(255,255,255,0.35)';
+  roundRectC(c, bx+s*0.28, by+s*0.18, s*0.4, s*0.08, s*0.04); c.fill();
+
+  /* Üst kenarda çok ince bir highlight çizgisi */
+  c.fillStyle = 'rgba(255,255,255,0.28)';
+  roundRectC(c, bx+s*0.15, by+s*0.08, s*0.7, s*0.04, s*0.02); c.fill();
 }
 function drawBlock(x, y, size, color, opts){
   if (!isFinite(x)||!isFinite(y)||!isFinite(size)||size<=0.5) return;
@@ -453,14 +464,12 @@ function makePiece(){
   return { cells: shape, color: COLORS[(Math.random()*COLORS.length)|0], w:maxC+1, h:maxR+1, bornAt:now, drawCell:30, trayX:0, trayY:0 };
 }
 
-/* YENİ: Bu parça mevcut tahtaya herhangi bir yere sığıyor mu? */
 function canPlaceAnywhere(p){
   if (!p) return false;
   for (var r=0;r<N;r++) for (var c=0;c<N;c++) if (canPlace(p,r,c)) return true;
   return false;
 }
 
-/* YENİ: Puzzle için akıllı parça üretimi — sığan parçalar gelir */
 function newPieces(){
   if (save.mode === 'puzzle'){
     var newSet = [];
@@ -779,7 +788,7 @@ function drawBoard(){
       var x=boardX+c*cell, y=boardY+r*cell;
       var g=Math.max(1,cell*0.06);
       ctx.fillStyle=th.cell;
-      roundRect(x+g, y+g, cell-g*2, cell-g*2, cell*0.22); ctx.fill();
+      roundRect(x+g, y+g, cell-g*2, cell-g*2, cell*0.28); ctx.fill();
     }
   }
   for (r=0;r<N;r++) for (c=0;c<N;c++){
@@ -1443,7 +1452,18 @@ function onUp(e){
     return;
   }
 
-  if (save.mode === 'rush') return;
+  /* YENİ: RUSH BUG DÜZELTİLDİ */
+  if (save.mode === 'rush'){
+    if (!anyMove()){
+      STATE = 'gameover';
+      save.totalGames++;
+      if (score > save.bestRush) save.bestRush = score;
+      persist();
+      Sfx.over();
+      vib([100,60,100]);
+    }
+    return;
+  }
 
   if (!anyMove()){
     STATE = 'gameover';
