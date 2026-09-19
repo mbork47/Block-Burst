@@ -17,9 +17,41 @@
     touch-action:none;user-select:none;-webkit-user-select:none;
     position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0e27}
   canvas{display:block;touch-action:none;width:100%;height:100%}
+  #rotateOverlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:#0a0e27;color:#fff;z-index:99999;
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:22px;padding:24px
+  }
+  #rotateOverlay .icon{
+    width:80px;height:80px;border:4px solid rgba(255,255,255,0.4);
+    border-radius:14px;position:relative;
+    animation:rotateHint 2s ease-in-out infinite
+  }
+  #rotateOverlay .icon::after{
+    content:'';position:absolute;width:30px;height:6px;
+    background:rgba(255,255,255,0.6);border-radius:3px;
+    bottom:10px;left:50%;transform:translateX(-50%)
+  }
+  #rotateOverlay .text{font-size:18px;font-weight:700;letter-spacing:-0.3px}
+  #rotateOverlay .sub{font-size:13px;opacity:0.5;text-align:center;max-width:260px;line-height:1.5}
+  @keyframes rotateHint{
+    0%,100%{transform:rotate(0deg)}
+    50%{transform:rotate(90deg)}
+  }
+  @media (orientation: landscape){
+    #rotateOverlay{display:flex}
+  }
 </style>
 </head>
 <body>
+
+<div id="rotateOverlay">
+  <div class="icon"></div>
+  <div class="text">Telefonu Dikey Tut</div>
+  <div class="sub">Oyun yatay modda oynanmıyor. Lütfen telefonu dikey pozisyona getir.</div>
+</div>
+
 <canvas id="c"></canvas>
 <script>
 (function(){
@@ -334,7 +366,6 @@ function roundRect(x,y,w,h,r){
   ctx.closePath();
 }
 
-/* ============ YENİ KABARIK BLOK SPRITE ============ */
 function getBlockSprite(color, size){
   if (!isFinite(size) || size < 2) return null;
   var roundedSize = Math.max(2, Math.round(size));
@@ -355,11 +386,9 @@ function drawPuffyBlockRaw(c, x, y, size, color){
   var bs = size - gap*2;
   if (bs <= 0) return;
 
-  // 1. DIŞ KENAR (koyu) — yükseklik
   c.fillStyle = darken(color, 0.38);
   c.fillRect(bx, by, bs, bs);
 
-  // 2. İÇ YÜZEY gradient
   var innerGap = bs * 0.1;
   var ix = bx + innerGap;
   var iy = by + innerGap;
@@ -373,28 +402,24 @@ function drawPuffyBlockRaw(c, x, y, size, color){
   c.fillStyle = grad;
   c.fillRect(ix, iy, iw, ih);
 
-  // 3. ÜST KENAR IŞIĞI
   var topG = c.createLinearGradient(ix, iy, ix, iy+ih*0.25);
   topG.addColorStop(0, 'rgba(255,255,255,0.4)');
   topG.addColorStop(1, 'rgba(255,255,255,0)');
   c.fillStyle = topG;
   c.fillRect(ix, iy, iw, ih*0.25);
 
-  // 4. SOL KENAR IŞIĞI
   var leftG = c.createLinearGradient(ix, iy, ix+iw*0.2, iy);
   leftG.addColorStop(0, 'rgba(255,255,255,0.22)');
   leftG.addColorStop(1, 'rgba(255,255,255,0)');
   c.fillStyle = leftG;
   c.fillRect(ix, iy, iw*0.2, ih);
 
-  // 5. ALT GÖLGE
   var botG = c.createLinearGradient(ix, iy+ih*0.75, ix, iy+ih);
   botG.addColorStop(0, 'rgba(0,0,0,0)');
   botG.addColorStop(1, 'rgba(0,0,0,0.25)');
   c.fillStyle = botG;
   c.fillRect(ix, iy+ih*0.75, iw, ih*0.25);
 
-  // 6. SAĞ GÖLGE
   var rightG = c.createLinearGradient(ix+iw*0.8, iy, ix+iw, iy);
   rightG.addColorStop(0, 'rgba(0,0,0,0)');
   rightG.addColorStop(1, 'rgba(0,0,0,0.15)');
@@ -417,7 +442,6 @@ function drawBlock(x, y, size, color, opts){
   ctx.drawImage(sprite, x, y, size, size);
 }
 
-/* ============ PANEL / BUTON ============ */
 function drawGlassPanel(x,y,w,h,r){
   var th = T();
   ctx.fillStyle = th.panel;
@@ -445,7 +469,6 @@ function drawButton(b, label, color, textColor, fontSize){
   ctx.fillText(label, b.x+b.w/2, b.y+b.h/2+1);
 }
 
-/* ============ PARÇA ============ */
 function makePiece(){
   var shape = POOL[(Math.random()*POOL.length)|0];
   var maxR=0, maxC=0;
@@ -481,7 +504,6 @@ function newPieces(){
   layoutTray();
 }
 
-/* ============ YERLEŞİM ============ */
 function getViewportH(){
   var h = window.innerHeight||600;
   if (window.visualViewport && window.visualViewport.height) h=Math.min(h, window.visualViewport.height);
@@ -552,7 +574,6 @@ function layoutTray(){
   }
 }
 
-/* ============ KURALLAR ============ */
 function canPlace(p,row,col){
   if (!p) return false;
   for (var i=0;i<p.cells.length;i++){
@@ -586,7 +607,6 @@ function findLines(){
   return {rows:rows, cols:cols};
 }
 
-/* ============ EFEKTLER ============ */
 function spawnParticles(x,y,size,color){
   var rgb = hexToRgb(color);
   for (var i=0;i<5;i++){
@@ -633,7 +653,6 @@ function drawEffects(){
   ctx.globalAlpha=1;
 }
 
-/* ============ ARKAPLAN ============ */
 var bgParticles = [];
 function initBgParticles(){
   if (W <= 0 || H <= 0) return;
@@ -665,7 +684,6 @@ function drawBackground(){
   }
 }
 
-/* ============ HUD ============ */
 function drawHUD(){
   var th = T();
   var labelF = Math.round(W*0.026);
@@ -796,16 +814,14 @@ function drawBoard(){
   drawGlassPanel(boardX-8, boardY-8, boardSize+16, boardSize+16, 22);
 
   var r, c;
-  // Boş hücreler — kare, çok koyu
   for (r=0;r<N;r++) for (c=0;c<N;c++){
     if (grid[r][c]===null){
       var x=boardX+c*cell, y=boardY+r*cell;
       var g=Math.max(1,cell*0.05);
-      ctx.fillStyle='rgba(255,255,255,0.04)';
+      ctx.fillStyle=th.cell;
       ctx.fillRect(x+g, y+g, cell-g*2, cell-g*2);
     }
   }
-  // Dolu bloklar
   for (r=0;r<N;r++) for (c=0;c<N;c++){
     var v=grid[r][c];
     if (v) drawBlock(boardX+c*cell, boardY+r*cell, cell, v);
@@ -885,7 +901,6 @@ function drawToast(){
   ctx.globalAlpha = 1;
 }
 
-/* ============ MENÜ ============ */
 function drawMenu(){
   drawBackground();
   buttons = {};
@@ -1229,7 +1244,6 @@ function drawLevelCompleteOverlay(){
   buttons.toMenu = b2;
 }
 
-/* ============ RENDER ============ */
 function render(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   if (STATE==='menu'){ drawMenu(); return; }
@@ -1253,7 +1267,6 @@ function render(){
   if (STATE==='levelComplete'){ buttons={}; drawLevelCompleteOverlay(); }
 }
 
-/* ============ GİRDİ ============ */
 function getPos(e){
   var rect = canvas.getBoundingClientRect();
   return { x: e.clientX-rect.left, y: e.clientY-rect.top };
