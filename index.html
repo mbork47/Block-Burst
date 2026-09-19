@@ -119,9 +119,9 @@ var grid=null, pieces=null;
 var score=0, displayScore=0, scorePulse=0;
 var drag=null;
 var particles=[], floaters=[], vanishing=[], pulses=[], confetti=[];
-var flashes=[]; /* YENİ: satır patlama flash */
-var squashEffects=[]; /* YENİ: blok yerleştirme squash */
-var buttonPressEffects=[]; /* YENİ: buton basma */
+var flashes=[];
+var squashEffects=[];
+var buttonPressEffects=[];
 var combo=0, lastClear=0, shake=0, boardGlow=0;
 var now=0;
 var continueUsed=false;
@@ -502,8 +502,6 @@ function drawGlassPanel(x,y,w,h,r){
 function drawButton(b, label, color, textColor, fontSize){
   if (!b) return;
   var rad = Math.min(b.h/2, 18);
-
-  /* YENİ: buton basma efekti */
   var pressScale = 1;
   for (var i=0;i<buttonPressEffects.length;i++){
     var pe = buttonPressEffects[i];
@@ -511,14 +509,12 @@ function drawButton(b, label, color, textColor, fontSize){
       pressScale = 0.94;
     }
   }
-
   var cx = b.x + b.w/2;
   var cy = b.y + b.h/2;
   var bw = b.w * pressScale;
   var bh = b.h * pressScale;
   var bx = cx - bw/2;
   var by = cy - bh/2;
-
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   roundRect(bx, by+4, bw, bh, rad); ctx.fill();
   var bg = ctx.createLinearGradient(bx, by, bx, by+bh);
@@ -602,7 +598,7 @@ function resize(){
   boardSize = cell*N;
   boardX = (W-boardSize)/2;
   boardY = hudH + Math.max(0, (availH-boardSize)/2);
-  LIFT = cell*0.08;
+  LIFT = cell*0.12; // LIFT artırıldı
   layoutTray();
   initBgParticles();
 }
@@ -675,7 +671,7 @@ function findLines(){
 
 function spawnParticles(x,y,size,color){
   var rgb = hexToRgb(color);
-  for (var i=0;i<7;i++){
+  for (var i=0;i<4;i++){ // Parçacık sayısı 4'e düşürüldü (optimizasyon)
     var ang=Math.random()*Math.PI*2;
     var spd=2+Math.random()*5;
     particles.push({ x:x+size/2, y:y+size/2, vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-2.5, life:1, decay:0.025+Math.random()*0.02, size:size*0.1+Math.random()*size*0.18, color: Math.random()<0.5 ? lighten(color,0.4) : 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')' });
@@ -713,7 +709,6 @@ function updateEffects(){
 function drawEffects(){
   var i, t, size, off;
 
-  /* YENİ: Satır patlama flash */
   for (i=0;i<flashes.length;i++){
     var fl = flashes[i];
     t = (now - fl.start) / fl.dur;
@@ -725,12 +720,10 @@ function drawEffects(){
   }
   ctx.globalAlpha = 1;
 
-  /* YENİ: Squash efekti */
   for (i=0;i<squashEffects.length;i++){
     var sq = squashEffects[i];
     t = (now - sq.start) / sq.dur;
     if (t >= 1) continue;
-    /* 0 -> 1 -> 0 şeklinde dalga */
     var wave = Math.sin(t * Math.PI);
     var scale = 1 + wave * 0.15;
     var s = sq.size * scale;
@@ -750,7 +743,6 @@ function drawEffects(){
   for (i=0;i<floaters.length;i++){
     var fl2=floaters[i];
     ctx.globalAlpha=Math.max(0,fl2.life);
-    /* YENİ: büyüme + dönme animasyonu */
     var scale2 = 1 + (1-fl2.life)*0.3;
     var rot = (1-fl2.life)*0.08;
     var fs=Math.round(W*(fl2.big?0.08:0.06)*scale2);
@@ -779,7 +771,6 @@ function initBgParticles(){
   }
 }
 
-/* YENİ: Menüde akan bloklar */
 var menuBlocks = [];
 function initMenuBlocks(){
   menuBlocks = [];
@@ -854,7 +845,6 @@ function drawHUD(){
   ctx.font='700 '+labelF+'px -apple-system, sans-serif';
   ctx.fillText('SKOR', PAD+2, topY + 26);
 
-  /* YENİ: Rolling number - score pulse */
   var scale = 1 + scorePulse*0.08;
   ctx.save();
   ctx.translate(PAD+2, topY + 26 + numF + 2);
@@ -937,13 +927,10 @@ function drawHUD(){
   if (combo > 1){
     var pillW = W*0.34, pillH = 36;
     var pillX = W/2 - pillW/2, pillY = topY + 6;
-
-    /* YENİ: Combo pill pulse */
     var pillScale = 1 + Math.sin(now*0.01)*0.04;
     ctx.save();
     ctx.translate(W/2, pillY + pillH/2);
     ctx.scale(pillScale, pillScale);
-
     var bg2 = ctx.createLinearGradient(-pillW/2,0,pillW/2,0);
     bg2.addColorStop(0,'#ff9f68'); bg2.addColorStop(1,'#ffd166');
     ctx.fillStyle='rgba(0,0,0,0.4)';
@@ -1043,7 +1030,10 @@ function drawDrag(){
   for (var i=0;i<p.cells.length;i++){
     var x = ox+p.cells[i][1]*pc, y = oy+p.cells[i][0]*pc;
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 4;
+    // Gölgeyi koyulaştırdık ve aşağı kaydırdık (havada hissi)
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; 
+    ctx.shadowBlur = 25; 
+    ctx.shadowOffsetY = 10; 
     drawBlock(x, y, pc, p.color);
     ctx.restore();
   }
@@ -1068,16 +1058,14 @@ function drawToast(){
 
 function drawMenu(){
   drawBackground();
-  drawMenuBlocks(); /* YENİ */
+  drawMenuBlocks();
   buttons = {};
   var th = T();
   var topOffset = safeTop;
 
   ctx.textAlign='center'; ctx.textBaseline='middle';
-
   var titleY = topOffset + H*0.15;
 
-  /* YENİ: başlık harf harf düşme animasyonu */
   if (!titleReady){
     if (titleLetters.length === 0){
       var text = 'BLOCK';
@@ -1112,7 +1100,6 @@ function drawMenu(){
   var fontSize = Math.round(W*0.13);
   ctx.font = '900 '+fontSize+'px -apple-system, sans-serif';
 
-  /* Harf harf BLOCK */
   if (titleLetters.length > 0){
     var letterSpacing = fontSize * 0.62;
     var totalW = (titleLetters.length-1) * letterSpacing;
@@ -1130,7 +1117,6 @@ function drawMenu(){
       ctx.fillText(lt.char, lx, ly);
     }
   } else {
-    /* Fallback */
     ctx.fillStyle='rgba(0,0,0,0.4)';
     ctx.fillText('BLOCK', 3, 3);
     var tgb = ctx.createLinearGradient(0, -W*0.08, 0, W*0.08);
@@ -1449,7 +1435,6 @@ function drawLevelCompleteOverlay(){
   drawGlassPanel(cx, cy, cardW, cardH, 30);
   ctx.textAlign='center'; ctx.textBaseline='middle';
 
-  /* YENİ: Yıldız pulsating */
   ctx.save();
   ctx.translate(W/2, cy+cardH*0.14);
   var p = 1 + Math.sin(now*0.006)*0.1;
@@ -1556,8 +1541,10 @@ function handleButton(pos){
 
 function updateDrag(pos){
   var p=drag.piece;
+  // LIFT'i 2.5 katına çıkardık, böylece blok parmağının biraz üstünde durur
   var px=pos.x-drag.grabCol*cell;
-  var py=pos.y-drag.grabRow*cell-LIFT;
+  var py=pos.y-drag.grabRow*cell-LIFT*2.5; 
+  
   drag.px=px; drag.py=py;
   drag.col=Math.round((px-boardX)/cell);
   drag.row=Math.round((py-boardY)/cell);
@@ -1615,21 +1602,18 @@ function onUp(e){
   if (STATE!=='playing' || !drag) return;
   e.preventDefault();
   var d=drag;
-  drag=null;
+  drag=null; 
+  
   if (!d.valid) return;
   var p=d.piece;
-
-  /* YENİ: Squash efekti her yerleştirilen blok için */
-  for (var si=0;si<p.cells.length;si++){
-    var sr = d.row+p.cells[si][0];
-    var sc2 = d.col+p.cells[si][1];
-    spawnSquash(boardX + sc2*cell, boardY + sr*cell, cell, p.color);
-  }
 
   for (var i=0;i<p.cells.length;i++){
     var r=d.row+p.cells[i][0], c=d.col+p.cells[i][1];
     grid[r][c] = p.color;
     addPulse(boardX+c*cell, boardY+r*cell, lighten(p.color,0.4));
+    
+    // YENİ: Her yerleşen blok için "pop" efekti (Block Blast hissi)
+    spawnSquash(boardX + c*cell, boardY + r*cell, cell, p.color);
   }
   score += p.cells.length;
   scorePulse = 1;
@@ -1642,7 +1626,6 @@ function onUp(e){
     for (var ri=0;ri<lines.rows.length;ri++) for (var cc=0;cc<N;cc++) cleared[lines.rows[ri]*N+cc] = true;
     for (var ci=0;ci<lines.cols.length;ci++) for (var rr=0;rr<N;rr++) cleared[rr*N+lines.cols[ci]] = true;
 
-    /* YENİ: Satır patlama flash */
     for (var fri=0; fri<lines.rows.length; fri++){
       spawnFlash(boardX, boardY + lines.rows[fri]*cell, boardSize, cell, 'rgba(255,255,255,0.8)');
     }
@@ -1670,7 +1653,6 @@ function onUp(e){
     scorePulse = 1;
     boardGlow = 1;
 
-    /* Combo yazısı özel animasyon */
     var comboText = '';
     if (combo === 2) comboText = 'NICE!';
     else if (combo === 3) comboText = 'GREAT!';
