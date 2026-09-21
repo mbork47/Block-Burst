@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icon-512.png.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Block Burst</title>
+<title>Block Burst - TEST</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{width:100%;height:100%;overflow:hidden;
@@ -20,34 +20,34 @@
   #bgCanvas{z-index:1}
   #gameCanvas{z-index:2}
   #fxCanvas{z-index:3}
+  #debugInfo{
+    position:fixed;top:60px;left:10px;z-index:999999;
+    background:rgba(0,0,0,0.85);color:#0f0;
+    padding:8px 12px;font:bold 13px monospace;
+    border-radius:6px;line-height:1.4;pointer-events:none;
+  }
+  #debugInfo .warn{color:#ff0}
+  #debugInfo .bad{color:#f00}
   #rotateOverlay{
     position:fixed;top:0;left:0;right:0;bottom:0;
     background:#0a0e27;color:#fff;z-index:99999;
     display:none;flex-direction:column;align-items:center;justify-content:center;
     gap:22px;padding:24px
   }
-  #rotateOverlay .icon{
-    width:80px;height:80px;border:4px solid rgba(255,255,255,0.4);
-    border-radius:14px;position:relative;
-    animation:rotateHint 2s ease-in-out infinite
-  }
-  #rotateOverlay .icon::after{
-    content:'';position:absolute;width:30px;height:6px;
-    background:rgba(255,255,255,0.6);border-radius:3px;
-    bottom:10px;left:50%;transform:translateX(-50%)
-  }
-  #rotateOverlay .text{font-size:18px;font-weight:700}
-  #rotateOverlay .sub{font-size:13px;opacity:0.5;text-align:center;max-width:260px;line-height:1.5}
-  @keyframes rotateHint{0%,100%{transform:rotate(0deg)}50%{transform:rotate(90deg)}}
   @media (orientation: landscape){ #rotateOverlay{display:flex} }
 </style>
 </head>
 <body>
 
 <div id="rotateOverlay">
-  <div class="icon"></div>
-  <div class="text">Telefonu Dikey Tut</div>
-  <div class="sub">Oyun yatay modda oynanmıyor. Lütfen telefonu dikey pozisyona getir.</div>
+  <div style="font-size:18px;font-weight:700">Telefonu Dikey Tut</div>
+</div>
+
+<div id="debugInfo">
+  <div>FPS: <span id="dbgFps">--</span></div>
+  <div>Frame: <span id="dbgFrame">--</span> ms</div>
+  <div>Pointer: <span id="dbgPtr">--</span> Hz</div>
+  <div style="margin-top:4px;color:#f0f">Kırmızı top = parmağın</div>
 </div>
 
 <canvas id="bgCanvas"></canvas>
@@ -55,25 +55,19 @@
 <canvas id="fxCanvas"></canvas>
 
 <script>
-// ========== HATA YAKALAYICI ==========
-window.__errorShown = false;
-function showError(msg, extra){
-  if (window.__errorShown) return;
-  window.__errorShown = true;
-  try {
-    var d = document.createElement('div');
-    d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c00;color:#fff;z-index:999999;padding:14px;font-size:12px;font-family:monospace;word-break:break-all;max-height:70%;overflow:auto;white-space:pre-wrap;';
-    d.textContent = 'HATA: ' + msg + '\n' + (extra||'');
-    document.body.appendChild(d);
-  } catch(e){}
-}
-window.onerror = function(msg, url, line, col, err){
-  showError(msg + ' @satır ' + line + ':' + col, err && err.stack ? err.stack : '');
-  return false;
-};
-window.addEventListener('unhandledrejection', function(e){
-  showError('Promise: ' + (e.reason && e.reason.message || e.reason));
-});
+// ========== DEBUG ÖLÇÜMLERİ ==========
+var __dbgFpsEl = document.getElementById('dbgFps');
+var __dbgFrameEl = document.getElementById('dbgFrame');
+var __dbgPtrEl = document.getElementById('dbgPtr');
+var __dbgLastFrame = 0;
+var __dbgFrameCount = 0;
+var __dbgPtrCount = 0;
+var __dbgPtrLast = 0;
+
+// Kırmızı top - parmağın konumu (RAW, hiçbir işlem yok)
+var debugTouchX = -100;
+var debugTouchY = -100;
+var debugActive = false;
 
 (function(){
 'use strict';
@@ -180,17 +174,6 @@ var save = {
 try {
   var raw = localStorage.getItem(SAVE_KEY);
   if (raw) Object.assign(save, JSON.parse(raw));
-  else {
-    var v13 = localStorage.getItem('blokSave_v13');
-    if (v13) Object.assign(save, JSON.parse(v13));
-    else {
-      var v12 = localStorage.getItem('blokSave_v12');
-      if (v12) Object.assign(save, JSON.parse(v12));
-    }
-  }
-  if (save.mode !== 'classic' && save.mode !== 'level' && save.mode !== 'rush' && save.mode !== 'puzzle'){
-    save.mode = 'classic';
-  }
 } catch(e){}
 function persist(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch(e){} }
 function T(){ return THEMES[save.theme] || THEMES.midnight; }
@@ -231,10 +214,10 @@ function measureSafeArea(){
   try {
     if (!document.body) return;
     var td = document.createElement('div');
-    td.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none;';
+    td.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top,0px);visibility:hidden;';
     document.body.appendChild(td);
     var bd = document.createElement('div');
-    bd.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none;';
+    bd.style.cssText = 'position:fixed;bottom:0;left:0;width:1px;height:env(safe-area-inset-bottom,0px);visibility:hidden;';
     document.body.appendChild(bd);
     var th = td.getBoundingClientRect().height;
     var bh = bd.getBoundingClientRect().height;
@@ -265,13 +248,10 @@ function initAudio(){
 }
 document.addEventListener('visibilitychange', function(){ if (!document.hidden) wakeAudio(); });
 window.addEventListener('focus', wakeAudio);
-window.addEventListener('pageshow', wakeAudio);
-setInterval(wakeAudio, 2000);
 
 function layer(freq, dur, type, vol, when, opts){
   opts = opts || {};
   if (!audioCtx) return;
-  if (audioCtx.state === 'suspended') wakeAudio();
   if (audioCtx.state !== 'running') return;
   try {
     var t0 = audioCtx.currentTime + (when||0);
@@ -280,21 +260,11 @@ function layer(freq, dur, type, vol, when, opts){
     o.type = type || 'sine';
     o.frequency.setValueAtTime(freq, t0);
     if (opts.freqEnd) o.frequency.exponentialRampToValueAtTime(Math.max(1, opts.freqEnd), t0+dur);
-    if (opts.detune) o.detune.setValueAtTime(opts.detune, t0);
     var attack = opts.attack || 0.006;
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(vol, t0+attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
-    var node = o;
-    if (opts.filter){
-      var f = audioCtx.createBiquadFilter();
-      f.type = opts.filter;
-      f.frequency.value = opts.filterFreq || 2000;
-      if (opts.q) f.Q.value = opts.q;
-      o.connect(f);
-      node = f;
-    }
-    node.connect(g);
+    o.connect(g);
     g.connect(audioCtx.destination);
     o.start(t0);
     o.stop(t0+dur+0.02);
@@ -302,98 +272,16 @@ function layer(freq, dur, type, vol, when, opts){
 }
 
 var Sfx = {
-  pick: function(){ if (!save.soundOn) return; layer(1100,0.045,'sine',0.05,0,{freqEnd:750,attack:0.002}); layer(2200,0.03,'triangle',0.016,0,{freqEnd:1500}); },
-  place: function(){
-    if (!save.soundOn) return;
-    layer(180,0.13,'sine',0.18,0,{freqEnd:90,attack:0.003});
-    layer(680,0.08,'triangle',0.09,0.005,{freqEnd:380,attack:0.003});
-    layer(1400,0.04,'sine',0.04,0.01);
-  },
-  clear: function(n){
-    if (!save.soundOn) return;
-    layer(150,0.22,'sine',0.24,0,{freqEnd:50,attack:0.005});
-    layer(600,0.08,'triangle',0.12,0.008,{freqEnd:320,attack:0.003});
-    layer(1400,0.06,'sawtooth',0.05,0.02,{freqEnd:900});
-    var notes=[880,1108.7,1318.5,1568];
-    var c=Math.min(4,Math.max(1,n));
-    for (var i=0;i<c;i++){
-      layer(notes[i],0.25,'triangle',0.07,0.04+i*0.05,{attack:0.008});
-      layer(notes[i]*2,0.15,'sine',0.025,0.04+i*0.05);
-    }
-  },
-  combo: function(c){
-    if (!save.soundOn) return;
-    var base=523.25;
-    var steps=Math.min(6,c);
-    var scale=[0,2,4,7,9,12];
-    for (var i=0;i<steps;i++){
-      var semi=scale[i%scale.length];
-      var f=base*Math.pow(2,semi/12);
-      var t=i*0.05;
-      layer(f,0.16,'triangle',0.07,t,{attack:0.005});
-      layer(f*2,0.12,'sine',0.03,t,{attack:0.005});
-      layer(f*4,0.08,'sine',0.012,t+0.02);
-    }
-  },
-  levelUp: function(){
-    if (!save.soundOn) return;
-    var notes=[523.25,659.25,783.99,1046.5,1318.5,1568];
-    for (var i=0;i<notes.length;i++){
-      var t=i*0.1;
-      layer(notes[i],0.5,'triangle',0.09,t,{attack:0.01});
-      layer(notes[i]*2,0.35,'sine',0.03,t,{attack:0.01});
-      layer(notes[i]/2,0.4,'sine',0.04,t);
-    }
-  },
-  over: function(){
-    if (!save.soundOn) return;
-    var notes=[392,349.23,293.66,220];
-    for (var i=0;i<notes.length;i++){
-      var t=i*0.18;
-      layer(notes[i],0.35,'sawtooth',0.06,t,{filter:'lowpass',filterFreq:1400,attack:0.015});
-      layer(notes[i]*0.5,0.4,'sine',0.045,t,{attack:0.015});
-      layer(notes[i]*0.25,0.5,'sine',0.03,t,{attack:0.02});
-    }
-  },
-  timeBonus: function(){ if (!save.soundOn) return; layer(880,0.1,'sine',0.07,0,{freqEnd:1320,attack:0.003}); layer(1320,0.12,'triangle',0.05,0.05,{freqEnd:1760}); layer(1760,0.1,'sine',0.03,0.1); },
+  pick: function(){ if (!save.soundOn) return; layer(1100,0.045,'sine',0.05,0,{freqEnd:750,attack:0.002}); },
+  place: function(){ if (!save.soundOn) return; layer(180,0.13,'sine',0.18,0,{freqEnd:90,attack:0.003}); },
+  clear: function(n){ if (!save.soundOn) return; layer(150,0.22,'sine',0.24,0,{freqEnd:50,attack:0.005}); },
+  combo: function(c){ if (!save.soundOn) return; layer(523.25,0.16,'triangle',0.07,0,{attack:0.005}); },
+  levelUp: function(){ if (!save.soundOn) return; layer(523.25,0.5,'triangle',0.09,0,{attack:0.01}); },
+  over: function(){ if (!save.soundOn) return; layer(392,0.35,'sawtooth',0.06,0,{attack:0.015}); },
+  timeBonus: function(){ if (!save.soundOn) return; layer(880,0.1,'sine',0.07,0,{freqEnd:1320,attack:0.003}); },
   tick: function(){ if (!save.soundOn) return; layer(1000,0.03,'sine',0.045,0,{freqEnd:800,attack:0.002}); },
   click: function(){ if (!save.soundOn) return; layer(1400,0.05,'sine',0.05,0,{freqEnd:900,attack:0.002}); }
 };
-
-function startMusic(){
-  if (!save.musicOn || !audioCtx || musicTimer) return;
-  var chords = [[261.63,329.63,392],[196,246.94,293.66],[220,261.63,329.63],[174.61,220,261.63]];
-  var basses = [130.81,98,110,87.31];
-  var melodyNotes = [523.25,587.33,659.25,783.99,880];
-  var melodySteps = [0,3,6,10,14];
-  var step = function(){
-    if (!save.musicOn) return;
-    if (!audioCtx || audioCtx.state !== 'running') return;
-    var s = musicStep16 % 16;
-    var bar = Math.floor(musicStep16 / 16) % 4;
-    var chord = chords[bar];
-    var bass = basses[bar];
-    if (s === 0 || s === 8) layer(60,0.2,'sine',0.08,0,{freqEnd:35,attack:0.003});
-    if (s === 4 || s === 12) layer(180,0.08,'triangle',0.035,0,{freqEnd:90});
-    if (s % 2 === 0) layer(8000,0.02,'square',0.006,0,{filter:'highpass',filterFreq:6000});
-    if (s === 0){
-      layer(bass,1.6,'sine',0.06,0,{attack:0.02});
-      for (var i=0;i<chord.length;i++) layer(chord[i],2.8,'sine',0.014,0,{attack:0.3});
-    }
-    if (melodySteps.indexOf(s) >= 0){
-      var idx = (musicStep16*7+s*3) % melodyNotes.length;
-      layer(melodyNotes[idx],0.6,'triangle',0.035,0,{attack:0.02});
-    }
-    if (s % 2 === 1){
-      var arpNote = chord[(s/2|0) % chord.length] * 2;
-      layer(arpNote,0.25,'sine',0.01,0,{attack:0.01});
-    }
-    musicStep16++;
-  };
-  step();
-  musicTimer = setInterval(step, 156);
-}
-function stopMusic(){ if (musicTimer){ clearInterval(musicTimer); musicTimer=null; } }
 
 function vib(ms){ if (!save.vibrationOn) return; if (navigator.vibrate){ try { navigator.vibrate(ms); } catch(e){} } }
 function toast(msg){ toastMsg = msg; toastStart = now; }
@@ -438,7 +326,6 @@ function easeOutBack(t){
   return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2);
 }
 
-// ========== SPRITE ==========
 function drawPuffyBlockRaw(c, x, y, size, color){
   var gap = Math.max(1, size * 0.015);
   var bx = x+gap, by = y+gap;
@@ -455,26 +342,8 @@ function drawPuffyBlockRaw(c, x, y, size, color){
   grad.addColorStop(1, darken(color, 0.12));
   c.fillStyle = grad;
   c.fillRect(ix, iy, iw, ih);
-  var topG = c.createLinearGradient(ix, iy, ix, iy+ih*0.25);
-  topG.addColorStop(0, 'rgba(255,255,255,0.4)');
-  topG.addColorStop(1, 'rgba(255,255,255,0)');
-  c.fillStyle = topG;
-  c.fillRect(ix, iy, iw, ih*0.25);
-  var leftG = c.createLinearGradient(ix, iy, ix+iw*0.2, iy);
-  leftG.addColorStop(0, 'rgba(255,255,255,0.22)');
-  leftG.addColorStop(1, 'rgba(255,255,255,0)');
-  c.fillStyle = leftG;
-  c.fillRect(ix, iy, iw*0.2, ih);
-  var botG = c.createLinearGradient(ix, iy+ih*0.75, ix, iy+ih);
-  botG.addColorStop(0, 'rgba(0,0,0,0)');
-  botG.addColorStop(1, 'rgba(0,0,0,0.25)');
-  c.fillStyle = botG;
-  c.fillRect(ix, iy+ih*0.75, iw, ih*0.25);
-  var rightG = c.createLinearGradient(ix+iw*0.8, iy, ix+iw, iy);
-  rightG.addColorStop(0, 'rgba(0,0,0,0)');
-  rightG.addColorStop(1, 'rgba(0,0,0,0.15)');
-  c.fillStyle = rightG;
-  c.fillRect(ix+iw*0.8, iy, iw*0.2, ih);
+  c.fillStyle = 'rgba(255,255,255,0.35)';
+  c.fillRect(ix, iy, iw, ih*0.2);
 }
 
 function getBlockSprite(color){
@@ -495,7 +364,6 @@ function drawBlockOn(c, x, y, size, color){
   c.drawImage(sprite, x, y, size, size);
 }
 
-// ========== PANEL CACHE ==========
 function getPanelCanvas(w, h, r){
   var key = Math.round(w)+'_'+Math.round(h)+'_'+Math.round(r)+'_'+save.theme;
   if (panelCache[key]) return panelCache[key];
@@ -524,7 +392,6 @@ function drawGlassPanelOn(c, x, y, w, h, r){
 }
 function drawGlassPanel(x,y,w,h,r){ drawGlassPanelOn(ctx, x, y, w, h, r); }
 
-// ========== EMPTY BOARD CACHE ==========
 function getEmptyBoardCanvas(){
   var key = cell+'_'+boardSize+'_'+save.theme;
   if (emptyBoardCanvas && emptyBoardKey === key) return emptyBoardCanvas;
@@ -545,7 +412,6 @@ function getEmptyBoardCanvas(){
   return c;
 }
 
-// ========== BACKGROUND ==========
 var bgDirty = true;
 function rebuildBackground(){
   bgCanvasEl.width = Math.floor(W*DPR);
@@ -559,29 +425,9 @@ function rebuildBackground(){
   grad.addColorStop(1, th.bg2);
   bgCtx.fillStyle = grad;
   bgCtx.fillRect(0,0,W,H);
-
-  var rgb = hexToRgb(th.accent);
-  var rgb2 = hexToRgb(th.accent2);
-  var glows = [
-    {x:0.2, y:0.25, r:180, c:rgb},
-    {x:0.8, y:0.15, r:150, c:rgb2},
-    {x:0.5, y:0.55, r:200, c:rgb},
-    {x:0.15, y:0.8, r:160, c:rgb2},
-    {x:0.85, y:0.9, r:170, c:rgb}
-  ];
-  for (var i=0;i<glows.length;i++){
-    var g = glows[i];
-    var x = g.x*W, y = g.y*H, r = g.r;
-    var rg = bgCtx.createRadialGradient(x, y, 0, x, y, r);
-    rg.addColorStop(0, 'rgba('+g.c[0]+','+g.c[1]+','+g.c[2]+',0.07)');
-    rg.addColorStop(1, 'rgba('+g.c[0]+','+g.c[1]+','+g.c[2]+',0)');
-    bgCtx.fillStyle = rg;
-    bgCtx.fillRect(x-r, y-r, r*2, r*2);
-  }
   bgDirty = false;
 }
 
-// ========== MENU BLOCKS ==========
 var menuBlocks = [];
 function initMenuBlocks(){
   menuBlocks = [];
@@ -607,7 +453,6 @@ function drawMenuBlocks(c){
     if (b.y > H + 100){
       b.y = -100 - Math.random()*200;
       b.x = Math.random()*W;
-      b.color = COLORS[(Math.random()*COLORS.length)|0];
     }
     c.save();
     c.globalAlpha = b.alpha;
@@ -619,39 +464,24 @@ function drawMenuBlocks(c){
   }
 }
 
-// ========== BUTON ==========
 function drawButtonOn(c, b, label, color, textColor, fontSize){
   if (!b) return;
   var rad = Math.min(b.h/2, 18);
-  var pressScale = 1;
-  for (var i=0;i<buttonPressEffects.length;i++){
-    var pe = buttonPressEffects[i];
-    if (pe.id === label && pe.active) pressScale = 0.94;
-  }
-  var cx = b.x + b.w/2;
-  var cy = b.y + b.h/2;
-  var bw = b.w * pressScale;
-  var bh = b.h * pressScale;
-  var bx = cx - bw/2;
-  var by = cy - bh/2;
   c.fillStyle = 'rgba(0,0,0,0.35)';
-  roundRectOn(c, bx, by+4, bw, bh, rad); c.fill();
-  var bg = c.createLinearGradient(bx, by, bx, by+bh);
+  roundRectOn(c, b.x, b.y+4, b.w, b.h, rad); c.fill();
+  var bg = c.createLinearGradient(b.x, b.y, b.x, b.y+b.h);
   bg.addColorStop(0, lighten(color, 0.18));
   bg.addColorStop(1, color);
   c.fillStyle = bg;
-  roundRectOn(c, bx, by, bw, bh, rad); c.fill();
-  c.fillStyle='rgba(255,255,255,0.22)';
-  roundRectOn(c, bx+3, by+2, bw-6, bh*0.42, rad*0.7); c.fill();
+  roundRectOn(c, b.x, b.y, b.w, b.h, rad); c.fill();
   c.fillStyle = textColor || '#0a0a14';
   c.font = '800 '+Math.round(fontSize || W*0.05)+'px -apple-system, sans-serif';
   c.textAlign='center';
   c.textBaseline='middle';
-  c.fillText(label, cx, cy+1);
+  c.fillText(label, b.x + b.w/2, b.y + b.h/2+1);
 }
 function drawButton(b, label, color, textColor, fontSize){ drawButtonOn(ctx, b, label, color, textColor, fontSize); }
 
-// ========== PIECE ==========
 function makePiece(){
   var shape = POOL[(Math.random()*POOL.length)|0];
   var maxR=0, maxC=0;
@@ -669,28 +499,13 @@ function canPlaceAnywhere(p){
 }
 
 function newPieces(){
-  if (save.mode === 'puzzle'){
-    var newSet = [];
-    for (var i=0;i<3;i++){
-      var chosen = null;
-      for (var attempt=0; attempt<40; attempt++){
-        var candidate = makePiece();
-        if (canPlaceAnywhere(candidate)){ chosen = candidate; break; }
-      }
-      if (!chosen) chosen = makePiece();
-      newSet.push(chosen);
-    }
-    pieces = newSet;
-  } else {
-    pieces = [makePiece(), makePiece(), makePiece()];
-  }
+  pieces = [makePiece(), makePiece(), makePiece()];
   layoutTray();
 }
 
 function getViewportH(){
   var h = window.innerHeight||600;
   if (window.visualViewport && window.visualViewport.height) h = Math.min(h, window.visualViewport.height);
-  if (document.documentElement && document.documentElement.clientHeight) h = Math.min(h, document.documentElement.clientHeight);
   if (!isFinite(h)||h<200) h=600;
   return h;
 }
@@ -746,7 +561,7 @@ function resize(){
   boardSize = cell*N;
   boardX = (W-boardSize)/2;
   boardY = hudH + Math.max(0, (availH-boardSize)/2);
-  LIFT = cell * 0.15;  // <-- ÇOK AZ - parmağın hemen üstünde
+  LIFT = cell * 0.15;
   layoutTray();
 }
 
@@ -772,14 +587,8 @@ function layoutTray(){
     var pieceH = p.h*pc;
     var cx = slotLeft + slotW2/2;
     var cy = trayTop + trayInnerH/2;
-    var tx = cx - pieceW/2;
-    var ty = cy - pieceH/2;
-    if (tx < trayLeft) tx = trayLeft;
-    if (tx + pieceW > trayRight) tx = trayRight - pieceW;
-    if (ty < trayTop) ty = trayTop;
-    if (ty + pieceH > trayBottom) ty = trayBottom - pieceH;
-    p.trayX = tx;
-    p.trayY = ty;
+    p.trayX = Math.max(trayLeft, Math.min(trayRight - pieceW, cx - pieceW/2));
+    p.trayY = Math.max(trayTop, Math.min(trayBottom - pieceH, cy - pieceH/2));
   }
 }
 
@@ -816,71 +625,33 @@ function findLines(){
   return {rows:rows, cols:cols};
 }
 
-// ========== EFFECTS ==========
-function spawnParticles(x,y,size,color){
-  var rgb = hexToRgb(color);
-  var lightColor = lighten(color, 0.4);
-  var rgbColor = 'rgb('+rgb[0]+','+rgb[1]+','+rgb[2]+')';
-  for (var i=0;i<3;i++){
-    var ang=Math.random()*Math.PI*2;
-    var spd=2+Math.random()*5;
-    particles.push({
-      x:x+size/2, y:y+size/2,
-      vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-2.5,
-      life:1, decay:0.025+Math.random()*0.02,
-      size:size*0.1+Math.random()*size*0.18,
-      color: Math.random()<0.5 ? lightColor : rgbColor
-    });
-  }
-}
-function spawnFloater(x,y,text,color,big){ floaters.push({x:x,y:y,text:text,color:color,life:1,decay:0.012,big:!!big}); }
-function addVanishing(x,y,color){ vanishing.push({x:x,y:y,color:color,start:now,dur:280}); }
-function spawnFlash(x,y,w,h,color){ flashes.push({x:x,y:y,w:w,h:h,color:color,start:now,dur:220}); }
-function spawnConfetti(){
-  var colors = COLORS;
-  for (var i=0;i<45;i++){
-    confetti.push({
-      x: W/2 + (Math.random()-0.5)*W*0.8,
-      y: H*0.3 + (Math.random()-0.5)*H*0.3,
-      vx: (Math.random()-0.5)*10, vy: -3-Math.random()*7,
-      rot: Math.random()*Math.PI*2, vr: (Math.random()-0.5)*0.5,
-      w: 6+Math.random()*8, h: 8+Math.random()*10,
-      color: colors[(Math.random()*colors.length)|0],
-      life: 1, decay: 0.005+Math.random()*0.004
-    });
-  }
-}
+function spawnFloater(x,y,text,color,big){ floaters.push({x:x,y:y,text:text,color:color,life:1,decay:0.02,big:!!big}); }
+function addVanishing(x,y,color){ vanishing.push({x:x,y:y,color:color,start:now,dur:200}); }
+function spawnFlash(x,y,w,h,color){ flashes.push({x:x,y:y,w:w,h:h,color:color,start:now,dur:180}); }
 
 function updateEffects(){
   var i;
-  for (i=particles.length-1;i>=0;i--){ var p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.3; p.vx*=0.98; p.life-=p.decay; if (p.life<=0) particles.splice(i,1); }
   for (i=floaters.length-1;i>=0;i--){ var f=floaters[i]; f.y-=1.6; f.life-=f.decay; if (f.life<=0) floaters.splice(i,1); }
   for (i=vanishing.length-1;i>=0;i--) if (now-vanishing[i].start>vanishing[i].dur) vanishing.splice(i,1);
   for (i=flashes.length-1;i>=0;i--) if (now-flashes[i].start>flashes[i].dur) flashes.splice(i,1);
-  for (i=confetti.length-1;i>=0;i--){ var c=confetti[i]; c.x+=c.vx; c.y+=c.vy; c.vy+=0.28; c.vx*=0.99; c.rot+=c.vr; c.life-=c.decay; if (c.life<=0 || c.y>H+40) confetti.splice(i,1); }
   for (i=buttonPressEffects.length-1;i>=0;i--) if (now-buttonPressEffects[i].start>120) buttonPressEffects.splice(i,1);
-
   if (displayScore !== score){
     var diff = score - displayScore;
-    if (Math.abs(diff) > 0.5) displayScore += diff*0.25;
+    if (Math.abs(diff) > 0.5) displayScore += diff*0.3;
     else displayScore = score;
   }
   if (scorePulse > 0) scorePulse *= 0.85; else scorePulse = 0;
   if (boardGlow > 0) boardGlow *= 0.88; else boardGlow = 0;
 }
 
-// ========== FX LAYER ==========
 function renderFX(){
   fxCtx.globalAlpha = 1;
-
   var doShake = (shake > 0.3);
   if (doShake){
     fxCtx.save();
     fxCtx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
   }
-
   var i, t, size, off;
-
   for (i=0;i<flashes.length;i++){
     var fl = flashes[i];
     t = (now - fl.start) / fl.dur;
@@ -890,7 +661,6 @@ function renderFX(){
     fxCtx.fillRect(fl.x, fl.y, fl.w, fl.h);
   }
   fxCtx.globalAlpha = 1;
-
   for (i=0;i<vanishing.length;i++){
     var v=vanishing[i];
     t=(now-v.start)/v.dur;
@@ -901,49 +671,32 @@ function renderFX(){
     drawBlockOn(fxCtx, v.x+off, v.y+off, size, v.color);
   }
   fxCtx.globalAlpha=1;
-
-  for (i=0;i<particles.length;i++){
-    var pa=particles[i];
-    fxCtx.globalAlpha=Math.max(0,pa.life);
-    fxCtx.fillStyle=pa.color;
-    fxCtx.beginPath();
-    fxCtx.arc(pa.x, pa.y, pa.size*pa.life, 0, Math.PI*2);
-    fxCtx.fill();
-  }
-  fxCtx.globalAlpha=1;
-
   fxCtx.textAlign='center';
   fxCtx.textBaseline='middle';
   for (i=0;i<floaters.length;i++){
     var fl2=floaters[i];
     fxCtx.globalAlpha=Math.max(0,fl2.life);
-    var scale2 = 1 + (1-fl2.life)*0.3;
-    var rot = (1-fl2.life)*0.08;
-    var fs=Math.round(W*(fl2.big?0.08:0.06)*scale2);
+    var fs=Math.round(W*(fl2.big?0.08:0.06));
     fxCtx.save();
     fxCtx.translate(fl2.x, fl2.y);
-    fxCtx.rotate(rot);
     fxCtx.font='900 '+fs+'px -apple-system, sans-serif';
-    fxCtx.lineWidth=6;
-    fxCtx.strokeStyle='rgba(0,0,0,0.5)';
-    fxCtx.strokeText(fl2.text, 0, 0);
     fxCtx.fillStyle=fl2.color;
     fxCtx.fillText(fl2.text, 0, 0);
     fxCtx.restore();
   }
   fxCtx.globalAlpha=1;
 
-  for (i=0;i<confetti.length;i++){
-    var cf=confetti[i];
-    fxCtx.save();
-    fxCtx.globalAlpha=Math.max(0,cf.life);
-    fxCtx.translate(cf.x, cf.y);
-    fxCtx.rotate(cf.rot);
-    fxCtx.fillStyle=cf.color;
-    fxCtx.fillRect(-cf.w/2, -cf.h/2, cf.w, cf.h);
-    fxCtx.restore();
+  // ========== DEBUG: KIRMIZI TOP ==========
+  if (debugActive){
+    fxCtx.fillStyle = '#ff00ff';
+    fxCtx.beginPath();
+    fxCtx.arc(debugTouchX, debugTouchY, 20, 0, Math.PI*2);
+    fxCtx.fill();
+    fxCtx.strokeStyle = '#fff';
+    fxCtx.lineWidth = 3;
+    fxCtx.stroke();
   }
-  fxCtx.globalAlpha=1;
+  // ========== DEBUG SON ==========
 
   if (doShake){
     fxCtx.restore();
@@ -951,164 +704,27 @@ function renderFX(){
   } else shake = 0;
 }
 
-// ========== HUD ==========
 function renderHUD(){
   var th = T();
-  var labelF = Math.round(W*0.026);
   var numF = Math.round(W*0.072);
   var topY = safeTop;
-  var isLevel = (save.mode === 'level');
-  var isRush = (save.mode === 'rush');
-  var isPuzzle = (save.mode === 'puzzle');
-
   ctx.textAlign='left';
   ctx.textBaseline='alphabetic';
-  ctx.fillStyle=th.dim;
-  ctx.font='700 '+labelF+'px -apple-system, sans-serif';
-  ctx.fillText('SKOR', PAD+2, topY + 26);
-
-  var scale = 1 + scorePulse*0.08;
-  ctx.save();
-  ctx.translate(PAD+2, topY + 26 + numF + 2);
-  ctx.scale(scale, scale);
   ctx.fillStyle=th.text;
   ctx.font='800 '+numF+'px -apple-system, sans-serif';
-  ctx.fillText(String(Math.round(displayScore)), 0, 0);
-  ctx.restore();
-
-  if (isRush){
-    ctx.textAlign='right';
-    ctx.fillStyle='rgba(255,255,255,0.35)';
-    ctx.font='700 '+labelF+'px -apple-system, sans-serif';
-    ctx.fillText('SURE', W-PAD-42, topY + 26);
-    var rushColor = rushSecondsLeft <= 10 ? '#ff6b6b' : '#ff9f68';
-    ctx.fillStyle=rushColor;
-    ctx.font='800 '+numF+'px -apple-system, sans-serif';
-    ctx.fillText(String(rushSecondsLeft), W-PAD-42, topY + 26 + numF + 2);
-  } else if (isPuzzle){
-    ctx.textAlign='right';
-    ctx.fillStyle='rgba(255,255,255,0.35)';
-    ctx.font='700 '+labelF+'px -apple-system, sans-serif';
-    ctx.fillText('HAMLE', W-PAD-42, topY + 26);
-    var puzzleColor = puzzleMoves <= 5 ? '#ff6b6b' : '#ffd166';
-    ctx.fillStyle=puzzleColor;
-    ctx.font='800 '+Math.round(numF*0.72)+'px -apple-system, sans-serif';
-    ctx.fillText(String(puzzleMoves), W-PAD-42, topY + 26 + numF + 2);
-  } else {
-    ctx.textAlign='right';
-    ctx.fillStyle=th.dim;
-    ctx.font='700 '+labelF+'px -apple-system, sans-serif';
-    ctx.fillText('REKOR', W-PAD-42, topY + 26);
-    ctx.fillStyle='#ffd166';
-    ctx.font='800 '+Math.round(numF*0.72)+'px -apple-system, sans-serif';
-    ctx.fillText(String(currentBest()), W-PAD-42, topY + 26 + numF + 2);
-  }
-
-  ctx.textAlign='left';
-  ctx.fillStyle = modeColor();
-  ctx.font='800 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-  ctx.fillText(modeLabel(), PAD+2, topY + 26 + numF + Math.round(W*0.048));
-
-  if (isLevel){
-    var ly = topY + 26 + numF + Math.round(W*0.048);
-    var barW = W-PAD*2-100, barH = 8;
-    var barX = PAD+2, barY = ly+8;
-    ctx.fillStyle='rgba(255,255,255,0.1)';
-    roundRect(barX, barY, barW, barH, 4); ctx.fill();
-    var prog = Math.min(1, score/currentTarget());
-    if (prog > 0){
-      var bg = ctx.createLinearGradient(barX,0,barX+barW*prog,0);
-      bg.addColorStop(0, th.accent); bg.addColorStop(1, th.accent2);
-      ctx.fillStyle=bg;
-      roundRect(barX, barY, barW*prog, barH, 4); ctx.fill();
-    }
-    ctx.textAlign='right';
-    ctx.fillStyle=th.dim;
-    ctx.font='700 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-    ctx.fillText(score+' / '+currentTarget(), W-PAD-42, barY+barH+2);
-  } else if (isRush){
-    var ly2 = topY + 26 + numF + Math.round(W*0.048);
-    var barW2 = W-PAD*2-60, barH2 = 8;
-    var barX2 = PAD+2, barY2 = ly2+8;
-    ctx.fillStyle='rgba(255,255,255,0.1)';
-    roundRect(barX2, barY2, barW2, barH2, 4); ctx.fill();
-    var timeProg = Math.min(1, rushSecondsLeft / RUSH_DURATION);
-    var rushBarColor = rushSecondsLeft <= 10 ? '#ff6b6b' : '#ff9f68';
-    ctx.fillStyle=rushBarColor;
-    if (timeProg > 0) { roundRect(barX2, barY2, barW2*timeProg, barH2, 4); ctx.fill(); }
-  } else if (isPuzzle){
-    var ly3 = topY + 26 + numF + Math.round(W*0.048);
-    var barW3 = W-PAD*2-60, barH3 = 8;
-    var barX3 = PAD+2, barY3 = ly3+8;
-    ctx.fillStyle='rgba(255,255,255,0.1)';
-    roundRect(barX3, barY3, barW3, barH3, 4); ctx.fill();
-    var moveProg = Math.max(0, puzzleMoves / PUZZLE_MOVES);
-    var moveColor = puzzleMoves <= 5 ? '#ff6b6b' : '#ffd166';
-    ctx.fillStyle=moveColor;
-    if (moveProg > 0) { roundRect(barX3, barY3, barW3*moveProg, barH3, 4); ctx.fill(); }
-  }
-
-  if (combo > 1){
-    var pillW = W*0.34, pillH = 36;
-    var pillY = topY + 6;
-    var pillScale = 1 + Math.sin(now*0.01)*0.04;
-    ctx.save();
-    ctx.translate(W/2, pillY + pillH/2);
-    ctx.scale(pillScale, pillScale);
-    var bg2 = ctx.createLinearGradient(-pillW/2,0,pillW/2,0);
-    bg2.addColorStop(0,'#ff9f68');
-    bg2.addColorStop(1,'#ffd166');
-    ctx.fillStyle='rgba(0,0,0,0.4)';
-    roundRect(-pillW/2, -pillH/2+2, pillW, pillH, pillH/2); ctx.fill();
-    ctx.fillStyle=bg2;
-    roundRect(-pillW/2, -pillH/2, pillW, pillH, pillH/2); ctx.fill();
-    ctx.fillStyle='#0a0a14';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.font='900 '+Math.round(W*0.044)+'px -apple-system, sans-serif';
-    ctx.fillText('COMBO x'+combo, 0, 1);
-    ctx.restore();
-  }
-
+  ctx.fillText(String(Math.round(displayScore)), PAD+2, topY + 26 + numF);
   var pb = {x: W-PAD-34, y: topY + 8, w: 32, h: 32};
   drawGlassPanel(pb.x, pb.y, pb.w, pb.h, 10);
-  ctx.fillStyle=th.text;
-  ctx.globalAlpha=0.7;
-  ctx.fillRect(pb.x+10, pb.y+9, 4, 14);
-  ctx.fillRect(pb.x+18, pb.y+9, 4, 14);
-  ctx.globalAlpha=1;
   buttons.pause = pb;
 }
 
 function renderBoard(){
-  var th = T();
-  if (boardGlow > 0.05){
-    ctx.save();
-    ctx.shadowColor = th.glow;
-    ctx.shadowBlur = 35 * boardGlow;
-    ctx.fillStyle = 'rgba(99,102,241,0.12)';
-    roundRect(boardX-8, boardY-8, boardSize+16, boardSize+16, 22); ctx.fill();
-    ctx.restore();
-  }
   drawGlassPanel(boardX-8, boardY-8, boardSize+16, boardSize+16, 22);
-
   ctx.drawImage(getEmptyBoardCanvas(), boardX, boardY, boardSize, boardSize);
-
   for (var r=0;r<N;r++) for (var c=0;c<N;c++){
     var v=grid[r][c];
     if (v) drawBlockOn(ctx, boardX+c*cell, boardY+r*cell, cell, v);
   }
-}
-
-function renderGhost(){
-  if (!drag || !drag.valid) return;
-  var p=drag.piece;
-  ctx.globalAlpha=0.4;
-  for (var i=0;i<p.cells.length;i++){
-    var x = boardX+(drag.col+p.cells[i][1])*cell;
-    var y = boardY+(drag.row+p.cells[i][0])*cell;
-    drawBlockOn(ctx, x, y, cell, p.color);
-  }
-  ctx.globalAlpha=1;
 }
 
 function renderTray(){
@@ -1119,14 +735,11 @@ function renderTray(){
     if (drag && drag.i===i) continue;
     var dc=p.drawCell;
     if (!isFinite(dc)||dc<=2) continue;
-    var pc = dc;
-    var cx=p.trayX+p.w*dc/2, cy=p.trayY+p.h*dc/2;
-    var ox=cx-p.w*pc/2, oy=cy-p.h*pc/2;
-    for (var j=0;j<p.cells.length;j++) drawBlockOn(ctx, ox+p.cells[j][1]*pc, oy+p.cells[j][0]*pc, pc, p.color);
+    for (var j=0;j<p.cells.length;j++) drawBlockOn(ctx, p.trayX+p.cells[j][1]*dc, p.trayY+p.cells[j][0]*dc, dc, p.color);
   }
 }
 
-// ========== DRAG RENDER - RAW Block Blast ==========
+// ========== NUCLEAR DRAG RENDER ==========
 function renderDrag(){
   if (!drag) return;
   var p=drag.piece, size=cell;
@@ -1138,86 +751,23 @@ function renderDrag(){
   ctx.globalAlpha = 1;
 }
 
-function renderToast(){
-  if (!toastMsg) return;
-  var age = (now - toastStart)/1000;
-  if (age > 2.5){ toastMsg = null; return; }
-  var alpha = age < 0.3 ? age/0.3 : age > 2 ? (2.5-age)/0.5 : 1;
-  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  var w = W*0.7, h = 44;
-  var x = (W-w)/2, y = H - safeBottom - 20 - h;
-  drawGlassPanel(x, y, w, h, 22);
-  ctx.fillStyle = T().text;
-  ctx.font = '700 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-  ctx.fillText(toastMsg, W/2, y+h/2+1);
-  ctx.globalAlpha = 1;
-}
-
-// ========== MENU ==========
 function renderMenuGameLayer(){
   ctx.clearRect(0,0,W,H);
   buttons = {};
   var th = T();
   var topOffset = safeTop;
-
   ctx.textAlign='center'; ctx.textBaseline='middle';
   var titleY = topOffset + H*0.15;
 
-  if (titleStartTime === 0) titleStartTime = now;
-  if (!titleReady){
-    if (titleLetters.length === 0){
-      var text = 'BLOCK';
-      for (var li=0; li<text.length; li++){
-        titleLetters.push({ char: text[li], delay: li*0.08, y: -100 });
-      }
-    }
-    var titleAge = (now - titleStartTime) * 0.001;
-    var allDone = true;
-    for (var lj=0; lj<titleLetters.length; lj++){
-      var letter = titleLetters[lj];
-      var elapsed = titleAge - letter.delay - 0.3;
-      if (elapsed < 0){ letter.y = -100; allDone = false; }
-      else if (elapsed < 0.5){
-        var t = elapsed / 0.5;
-        letter.y = -100 * (1 - easeOutBack(t));
-        allDone = false;
-      } else letter.y = 0;
-    }
-    if (allDone) titleReady = true;
-  }
-
   ctx.save();
   ctx.translate(W/2, titleY);
-  var tScale = 1 + Math.sin(now*0.002)*0.012;
-  ctx.scale(tScale, tScale);
-  var fontSize = Math.round(W*0.13);
-  ctx.font = '900 '+fontSize+'px -apple-system, sans-serif';
-
+  ctx.font = '900 '+Math.round(W*0.13)+'px -apple-system, sans-serif';
   var tg1 = ctx.createLinearGradient(0, -W*0.08, 0, W*0.08);
   tg1.addColorStop(0, th.accent2);
   tg1.addColorStop(1, th.accent);
-
-  if (titleLetters.length > 0){
-    var letterSpacing = fontSize * 0.62;
-    var totalW = (titleLetters.length-1) * letterSpacing;
-    var startX = -totalW/2;
-    for (var lk=0; lk<titleLetters.length; lk++){
-      var lt = titleLetters[lk];
-      var lx = startX + lk * letterSpacing;
-      var ly = lt.y;
-      ctx.fillStyle='rgba(0,0,0,0.4)';
-      ctx.fillText(lt.char, lx + 3, ly + 3);
-      ctx.fillStyle = tg1;
-      ctx.fillText(lt.char, lx, ly);
-    }
-  }
-
-  ctx.fillStyle='rgba(0,0,0,0.4)';
-  ctx.fillText('BURST', 3, Math.round(W*0.125)+3);
-  var tg2 = ctx.createLinearGradient(0, W*0.06, 0, W*0.22);
-  tg2.addColorStop(0, '#ffd166'); tg2.addColorStop(1, '#ff9f68');
-  ctx.fillStyle = tg2;
+  ctx.fillStyle = tg1;
+  ctx.fillText('BLOCK', 0, 0);
+  ctx.fillStyle = '#ffd166';
   ctx.fillText('BURST', 0, Math.round(W*0.125));
   ctx.restore();
 
@@ -1230,36 +780,18 @@ function renderMenuGameLayer(){
   function drawTab(x, y, w, h, label, mode, color){
     var isActive = (save.mode === mode);
     var b = {x:x, y:y, w:w, h:h};
-    var sc = 1;
-    for (var pi=0; pi<buttonPressEffects.length; pi++){
-      var pe = buttonPressEffects[pi];
-      if (pe.id === label && pe.active) sc = 0.94;
-    }
-    var cx = x + w/2;
-    var cy = y + h/2;
-    var bw = w*sc, bh = h*sc;
-    var bx = cx - bw/2, by = cy - bh/2;
-
     if (isActive){
-      var bgC = ctx.createLinearGradient(0, by, 0, by+bh);
-      bgC.addColorStop(0, lighten(color, 0.15));
-      bgC.addColorStop(1, color);
-      ctx.fillStyle='rgba(0,0,0,0.35)';
-      roundRect(bx, by+3, bw, bh, bh/2); ctx.fill();
-      ctx.fillStyle=bgC;
-      roundRect(bx, by, bw, bh, bh/2); ctx.fill();
+      ctx.fillStyle=color;
+      roundRect(b.x, b.y, b.w, b.h, b.h/2); ctx.fill();
       ctx.fillStyle='#0a0a14';
     } else {
       ctx.fillStyle='rgba(255,255,255,0.06)';
-      roundRect(bx, by, bw, bh, bh/2); ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.12)';
-      ctx.lineWidth=1;
-      roundRect(bx, by, bw, bh, bh/2); ctx.stroke();
+      roundRect(b.x, b.y, b.w, b.h, b.h/2); ctx.fill();
       ctx.fillStyle=th.dim;
     }
     ctx.font='800 '+Math.round(W*0.038)+'px -apple-system, sans-serif';
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(label, cx, cy+1);
+    ctx.fillText(label, b.x + b.w/2, b.y + b.h/2);
     return b;
   }
 
@@ -1268,296 +800,19 @@ function renderMenuGameLayer(){
   buttons.modeRush = drawTab(PAD, tabY2, tabW, tabH, 'RUSH', 'rush', '#ff9f68');
   buttons.modePuzzle = drawTab(PAD + tabW + tabGap, tabY2, tabW, tabH, 'PUZZLE', 'puzzle', '#ffd166');
 
-  var modeDesc = '';
-  if (save.mode === 'classic') modeDesc = 'Endless - just score';
-  else if (save.mode === 'level') modeDesc = 'Hit target to level up';
-  else if (save.mode === 'rush') modeDesc = '60s - combos give extra time';
-  else if (save.mode === 'puzzle') modeDesc = 'Clear the board in 20 moves';
-
-  ctx.fillStyle = th.dim;
-  ctx.font='600 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText(modeDesc, W/2, tabY2 + tabH + 16);
-
-  var badgeW = W*0.72, badgeH = 72;
-  var bx = (W-badgeW)/2, by = topOffset + H*0.5;
-  drawGlassPanel(bx, by, badgeW, badgeH, 22);
-
-  ctx.textAlign='center';
-  ctx.fillStyle = th.dim;
-  ctx.font='700 '+Math.round(W*0.026)+'px -apple-system, sans-serif';
-
-  if (save.mode === 'classic'){
-    ctx.fillText('BEST SCORE', W/2, by+18);
-    ctx.fillStyle = '#5fd3c4';
-    ctx.font='900 '+Math.round(W*0.058)+'px -apple-system, sans-serif';
-    ctx.fillText(String(save.bestClassic), W/2, by+50);
-  } else if (save.mode === 'level'){
-    ctx.fillText('LEVEL', W*0.32, by+18);
-    ctx.fillText('BEST', W*0.68, by+18);
-    ctx.fillStyle = th.accent2;
-    ctx.font='900 '+Math.round(W*0.052)+'px -apple-system, sans-serif';
-    ctx.fillText(String(currentLevel()), W*0.32, by+48);
-    ctx.fillStyle = '#ffd166';
-    ctx.font='900 '+Math.round(W*0.052)+'px -apple-system, sans-serif';
-    ctx.fillText(String(save.best), W*0.68, by+48);
-  } else if (save.mode === 'rush'){
-    ctx.fillText('BEST RUSH', W/2, by+18);
-    ctx.fillStyle = '#ff9f68';
-    ctx.font='900 '+Math.round(W*0.058)+'px -apple-system, sans-serif';
-    ctx.fillText(String(save.bestRush), W/2, by+50);
-  } else if (save.mode === 'puzzle'){
-    ctx.fillText('BEST PUZZLE', W/2, by+18);
-    ctx.fillStyle = '#ffd166';
-    ctx.font='900 '+Math.round(W*0.058)+'px -apple-system, sans-serif';
-    ctx.fillText(String(save.bestPuzzle), W/2, by+50);
-  }
-
   var bw=W*0.68, bh=Math.max(64, W*0.17);
-  var bx2=(W-bw)/2;
-  var b1={x:bx2, y:topOffset + H*0.63, w:bw, h:bh};
+  var b1={x:(W-bw)/2, y:topOffset + H*0.63, w:bw, h:bh};
   drawButton(b1, 'PLAY', modeColor(), '#ffffff', W*0.065);
   buttons.play = b1;
-
-  var iconSize = Math.max(52, W*0.14);
-  var iconGap = 16;
-  var totalW = iconSize*2+iconGap;
-  var iconX = (W-totalW)/2;
-  var iconY = topOffset + H*0.63 + bh + 20;
-
-  var sb = {x:iconX, y:iconY, w:iconSize, h:iconSize};
-  drawGlassPanel(sb.x, sb.y, sb.w, sb.h, 16);
-  ctx.fillStyle = th.text;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.font='700 '+Math.round(iconSize*0.55)+'px -apple-system, sans-serif';
-  ctx.fillText('\u2699', sb.x+sb.w/2, sb.y+sb.h/2+2);
-  buttons.settings = sb;
-
-  var hb = {x:iconX+iconSize+iconGap, y:iconY, w:iconSize, h:iconSize};
-  drawGlassPanel(hb.x, hb.y, hb.w, hb.h, 16);
-  ctx.fillStyle = th.text;
-  ctx.font='700 '+Math.round(iconSize*0.5)+'px -apple-system, sans-serif';
-  ctx.fillText('?', hb.x+hb.w/2, hb.y+hb.h/2+2);
-  buttons.howto = hb;
 }
 
-function drawBackButton(){
-  var th = T();
-  var b = {x:(W-W*0.6)/2, y:H - safeBottom - 74, w:W*0.6, h:Math.max(54, W*0.14)};
-  drawButton(b, 'BACK', th.accent, '#ffffff', W*0.05);
-  buttons.back = b;
-}
-
-function drawScreenTitle(text){
-  var th = T();
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle=th.text;
-  ctx.font='900 '+Math.round(W*0.088)+'px -apple-system, sans-serif';
-  ctx.fillText(text, W/2, safeTop + H*0.1);
-}
-
-function renderHowTo(){
-  ctx.clearRect(0,0,W,H);
-  buttons={};
-  drawScreenTitle('HOW TO PLAY');
-  var th = T();
-  var lines = [
-    'Drag the 3 pieces from the bottom',
-    'and drop them on the 8x8 board.',
-    '',
-    'Fill a full row or column',
-    'to make it burst and score points.',
-    '',
-    'COMBO builds when you burst',
-    'several times in a row.',
-    '',
-    'CLASSIC: endless score mode.',
-    'LEVEL: hit target to advance.',
-    'RUSH: 60s - combos add extra time!',
-    'PUZZLE: clear board in 20 moves.'
-  ];
-  ctx.font='500 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
-  ctx.fillStyle=th.dim;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  var y=safeTop + H*0.18;
-  var lh=Math.round(W*0.046);
-  for (var i=0;i<lines.length;i++){ ctx.fillText(lines[i], W/2, y); y+=lh; }
-  drawBackButton();
-}
-
-function renderSettings(){
-  ctx.clearRect(0,0,W,H);
-  buttons={};
-  drawScreenTitle('SETTINGS');
-  var th = T();
-  var rowW=W*0.84, rowH=Math.max(66, W*0.16);
-  var rx=(W-rowW)/2;
-  var y=safeTop + H*0.18;
-
-  function drawRow(label, btnLabel, isOn, color){
-    var rowTop = y;
-    drawGlassPanel(rx, y, rowW, rowH, 16);
-    ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillStyle=th.text;
-    ctx.font='700 '+Math.round(W*0.05)+'px -apple-system, sans-serif';
-    ctx.fillText(label, rx+22, y+rowH/2);
-    var b={x:rx+rowW-118, y:y+(rowH-48)/2, w:98, h:48};
-    drawButton(b, btnLabel, isOn ? color : '#555555', '#ffffff', W*0.032);
-    y += rowH + 12;
-    return { x:rx, y:rowTop, w:rowW, h:rowH };
-  }
-
-  buttons.sound = drawRow('SOUND', save.soundOn ? 'ON' : 'OFF', save.soundOn, th.accent);
-  buttons.music = drawRow('MUSIC', save.musicOn ? 'ON' : 'OFF', save.musicOn, th.accent);
-  buttons.vibration = drawRow('VIBRATION', save.vibrationOn ? 'ON' : 'OFF', save.vibrationOn, th.accent);
-
-  var themeTop = y;
-  drawGlassPanel(rx, y, rowW, rowH, 16);
-  ctx.textAlign='left';
-  ctx.fillStyle=th.text;
-  ctx.font='700 '+Math.round(W*0.05)+'px -apple-system, sans-serif';
-  ctx.fillText('THEME', rx+22, y+rowH/2);
-  var tBtn = {x:rx+rowW-118, y:y+(rowH-48)/2, w:98, h:48};
-  drawButton(tBtn, T().name, '#8b5cf6', '#ffffff', W*0.028);
-  buttons.theme = { x:rx, y:themeTop, w:rowW, h:rowH };
-  y += rowH + 20;
-
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle=th.dim;
-  ctx.font='600 '+Math.round(W*0.032)+'px -apple-system, sans-serif';
-  ctx.fillText('Total games: '+save.totalGames, W/2, y);
-
-  drawBackButton();
-}
-
-// ========== OVERLAYS ==========
-function renderPauseOverlay(c){
-  var th = T();
-  c.fillStyle='rgba(0,0,0,0.88)';
-  c.fillRect(0,0,W,H);
-  var cardW = W*0.85, cardH = Math.min(H*0.6, 420);
-  var cx = (W-cardW)/2, cy = (H-cardH)/2;
-  drawGlassPanelOn(c, cx, cy, cardW, cardH, 28);
-  c.textAlign='center'; c.textBaseline='middle';
-  c.fillStyle=th.text;
-  c.font='900 '+Math.round(W*0.09)+'px -apple-system, sans-serif';
-  c.fillText('PAUSED', W/2, cy+cardH*0.16);
-  c.fillStyle = th.dim;
-  c.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-  var subInfo = '';
-  if (save.mode === 'rush') subInfo = 'Time left: ' + rushSecondsLeft + 's';
-  else if (save.mode === 'puzzle') subInfo = 'Moves left: ' + puzzleMoves;
-  else subInfo = 'Score: ' + score;
-  c.fillText(subInfo, W/2, cy+cardH*0.3);
-  var bw=cardW*0.72, bh=Math.max(56, W*0.14);
-  var bx=cx+(cardW-bw)/2;
-  var y=cy+cardH*0.44;
-  var b1={x:bx, y:y, w:bw, h:bh};
-  drawButtonOn(c, b1, 'RESUME', th.accent, '#ffffff', W*0.052);
-  buttons.resume = b1;
-  y += bh + 14;
-  var b2={x:bx, y:y, w:bw, h:bh};
-  drawButtonOn(c, b2, 'MAIN MENU', '#555555', '#ffffff', W*0.048);
-  buttons.toMenu = b2;
-}
-
-function renderGameOverOverlay(c){
-  var th = T();
-  c.fillStyle='rgba(0,0,0,0.88)';
-  c.fillRect(0,0,W,H);
-  var cardW = W*0.86, cardH = Math.min(H*0.8, 580);
-  var cx = (W-cardW)/2, cy = (H-cardH)/2;
-  drawGlassPanelOn(c, cx, cy, cardW, cardH, 30);
-  c.textAlign='center'; c.textBaseline='middle';
-  c.fillStyle=th.dim;
-  c.font='700 '+Math.round(W*0.034)+'px -apple-system, sans-serif';
-  c.fillText('GAME OVER', W/2, cy+45);
-  c.save();
-  c.translate(W/2, cy+cardH*0.22);
-  var sc = 1 + Math.sin(now*0.004)*0.03;
-  c.scale(sc, sc);
-  var tg = c.createLinearGradient(0,-W*0.08,0,W*0.08);
-  tg.addColorStop(0, '#ffd166'); tg.addColorStop(1, '#ff9f68');
-  c.fillStyle=tg;
-  c.font='900 '+Math.round(W*0.17)+'px -apple-system, sans-serif';
-  c.fillText(String(score), 0, 0);
-  c.restore();
-  var bestVal = currentBest();
-  if (score >= bestVal && score > 0){
-    c.fillStyle = th.accent2;
-    c.font='800 '+Math.round(W*0.042)+'px -apple-system, sans-serif';
-    c.fillText('* NEW RECORD *', W/2, cy+cardH*0.36);
-  } else {
-    c.fillStyle = th.dim;
-    c.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-    c.fillText('Best: '+bestVal, W/2, cy+cardH*0.36);
-  }
-  c.fillStyle = 'rgba(255,255,255,0.25)';
-  c.font='600 '+Math.round(W*0.028)+'px -apple-system, sans-serif';
-  c.fillText(modeLabel(), W/2, cy+cardH*0.42);
-  var bw=cardW*0.78, bh=Math.max(56, W*0.14);
-  var bx=cx+(cardW-bw)/2;
-  var y=cy+cardH*0.52;
-  var b1={x:bx, y:y, w:bw, h:bh};
-  drawButtonOn(c, b1, 'PLAY AGAIN', th.accent, '#ffffff', W*0.05);
-  buttons.play = b1;
-  y += bh + 12;
-  if (!continueUsed && save.mode !== 'puzzle'){
-    var b2={x:bx, y:y, w:bw, h:bh};
-    drawButtonOn(c, b2, 'WATCH AD -> CONTINUE', '#ff9f68', '#ffffff', W*0.034);
-    buttons.continue = b2;
-    y += bh + 12;
-  }
-  var b3={x:bx, y:y, w:bw, h:bh*0.8};
-  drawButtonOn(c, b3, 'MAIN MENU', '#555555', '#ffffff', W*0.046);
-  buttons.toMenu = b3;
-}
-
-function renderLevelCompleteOverlay(c){
-  var th = T();
-  c.fillStyle='rgba(0,0,0,0.88)';
-  c.fillRect(0,0,W,H);
-  var cardW = W*0.86, cardH = Math.min(H*0.72, 560);
-  var cx = (W-cardW)/2, cy = (H-cardH)/2;
-  drawGlassPanelOn(c, cx, cy, cardW, cardH, 30);
-  c.textAlign='center'; c.textBaseline='middle';
-
-  c.save();
-  c.translate(W/2, cy+cardH*0.14);
-  var p = 1 + Math.sin(now*0.006)*0.1;
-  c.scale(p, p);
-  c.font='900 '+Math.round(W*0.2)+'px -apple-system, sans-serif';
-  c.fillStyle='#ffd166';
-  c.fillText('*', 0, 0);
-  c.restore();
-
-  c.fillStyle=th.text;
-  c.font='900 '+Math.round(W*0.072)+'px -apple-system, sans-serif';
-  c.fillText('LEVEL '+currentLevel()+' CLEARED!', W/2, cy+cardH*0.32);
-  c.fillStyle=th.dim;
-  c.font='600 '+Math.round(W*0.036)+'px -apple-system, sans-serif';
-  c.fillText('Score: '+score, W/2, cy+cardH*0.42);
-  c.fillStyle=th.accent2;
-  c.font='700 '+Math.round(W*0.034)+'px -apple-system, sans-serif';
-  c.fillText('Next target: '+levelTarget(save.level+1), W/2, cy+cardH*0.48);
-  var bw=cardW*0.75, bh=Math.max(56, W*0.14);
-  var bx=cx+(cardW-bw)/2;
-  var b1={x:bx, y:cy+cardH*0.58, w:bw, h:bh};
-  drawButtonOn(c, b1, 'NEXT LEVEL', th.accent, '#ffffff', W*0.05);
-  buttons.nextLevel = b1;
-  var b2={x:bx, y:cy+cardH*0.58+bh+12, w:bw, h:bh};
-  drawButtonOn(c, b2, 'MAIN MENU', '#555555', '#ffffff', W*0.05);
-  buttons.toMenu = b2;
-}
-
-// ========== MASTER RENDER ==========
 function render(){
   if (bgDirty) rebuildBackground();
 
   fxCtx.setTransform(DPR,0,0,DPR,0,0);
   fxCtx.clearRect(0,0,W,H);
 
-  if (STATE === 'menu' || STATE === 'howto' || STATE === 'settings'){
+  if (STATE === 'menu'){
     drawMenuBlocks(fxCtx);
   }
 
@@ -1567,21 +822,13 @@ function render(){
   ctx.clearRect(0,0,W,H);
 
   if (STATE === 'menu'){ renderMenuGameLayer(); }
-  else if (STATE === 'howto'){ renderHowTo(); }
-  else if (STATE === 'settings'){ renderSettings(); }
   else {
     buttons = {};
     renderHUD();
     renderBoard();
-    renderGhost();
     renderTray();
     renderDrag();
-    renderToast();
   }
-
-  if (STATE === 'paused'){ buttons = {}; renderPauseOverlay(fxCtx); }
-  if (STATE === 'gameover'){ buttons = {}; renderGameOverOverlay(fxCtx); }
-  if (STATE === 'levelComplete'){ buttons = {}; renderLevelCompleteOverlay(fxCtx); }
 }
 
 function getPos(e){
@@ -1592,60 +839,17 @@ function inside(b, x, y){
   return b && x>=b.x && x<=b.x+b.w && y>=b.y && y<=b.y+b.h;
 }
 
-function triggerButtonPress(id){
-  buttonPressEffects.push({ id: id, active: true, start: now });
-}
-
 function handleButton(pos){
-  if (STATE==='settings'){
-    if (inside(buttons.sound, pos.x, pos.y)){ save.soundOn=!save.soundOn; persist(); if (save.soundOn){ initAudio(); Sfx.click(); } vib(15); toast(save.soundOn?'Sound on':'Sound off'); return true; }
-    if (inside(buttons.music, pos.x, pos.y)){ save.musicOn=!save.musicOn; persist(); if (save.musicOn){ initAudio(); startMusic(); } else { stopMusic(); } vib(15); toast(save.musicOn?'Music on':'Music off'); return true; }
-    if (inside(buttons.vibration, pos.x, pos.y)){ save.vibrationOn=!save.vibrationOn; persist(); if (save.vibrationOn) vib(30); toast(save.vibrationOn?'Vibration on':'Vibration off'); return true; }
-    if (inside(buttons.theme, pos.x, pos.y)){
-      var keys=Object.keys(THEMES);
-      var i=keys.indexOf(save.theme);
-      save.theme=keys[(i+1)%keys.length];
-      persist();
-      bgDirty = true;
-      panelCache = {};
-      emptyBoardCanvas = null;
-      emptyBoardKey = '';
-      spriteCache = {};
-      Sfx.click();
-      toast('Theme: '+T().name);
-      return true;
-    }
-    if (inside(buttons.back, pos.x, pos.y)){ Sfx.click(); STATE='menu'; return true; }
-  }
-  if (STATE==='howto'){
-    if (inside(buttons.back, pos.x, pos.y)){ Sfx.click(); STATE='menu'; return true; }
-  }
   if (STATE==='menu'){
-    if (inside(buttons.modeClassic, pos.x, pos.y)){ triggerButtonPress('CLASSIC'); save.mode='classic'; persist(); Sfx.click(); return true; }
-    if (inside(buttons.modeLevel, pos.x, pos.y)){ triggerButtonPress('LEVEL'); save.mode='level'; persist(); Sfx.click(); return true; }
-    if (inside(buttons.modeRush, pos.x, pos.y)){ triggerButtonPress('RUSH'); save.mode='rush'; persist(); Sfx.click(); return true; }
-    if (inside(buttons.modePuzzle, pos.x, pos.y)){ triggerButtonPress('PUZZLE'); save.mode='puzzle'; persist(); Sfx.click(); return true; }
-    if (inside(buttons.settings, pos.x, pos.y)){ Sfx.click(); STATE='settings'; return true; }
-    if (inside(buttons.howto, pos.x, pos.y)){ Sfx.click(); STATE='howto'; return true; }
-    if (inside(buttons.play, pos.x, pos.y)){ triggerButtonPress('PLAY'); initAudio(); Sfx.click(); startGame(); return true; }
-  }
-  if (STATE==='paused'){
-    if (inside(buttons.resume, pos.x, pos.y)){ Sfx.click(); STATE='playing'; return true; }
-    if (inside(buttons.toMenu, pos.x, pos.y)){ Sfx.click(); STATE='menu'; return true; }
-  }
-  if (STATE==='gameover'){
-    if (inside(buttons.play, pos.x, pos.y)){ Sfx.click(); startGame(); return true; }
-    if (inside(buttons.continue, pos.x, pos.y)){ Sfx.click(); toast('Loading ad...'); setTimeout(function(){ handleContinue(); }, 1200); return true; }
-    if (inside(buttons.toMenu, pos.x, pos.y)){ Sfx.click(); STATE='menu'; return true; }
-  }
-  if (STATE==='levelComplete'){
-    if (inside(buttons.nextLevel, pos.x, pos.y)){ Sfx.click(); save.level++; persist(); startGame(); return true; }
-    if (inside(buttons.toMenu, pos.x, pos.y)){ Sfx.click(); STATE='menu'; return true; }
+    if (inside(buttons.modeClassic, pos.x, pos.y)){ save.mode='classic'; persist(); return true; }
+    if (inside(buttons.modeLevel, pos.x, pos.y)){ save.mode='level'; persist(); return true; }
+    if (inside(buttons.modeRush, pos.x, pos.y)){ save.mode='rush'; persist(); return true; }
+    if (inside(buttons.modePuzzle, pos.x, pos.y)){ save.mode='puzzle'; persist(); return true; }
+    if (inside(buttons.play, pos.x, pos.y)){ startGame(); return true; }
   }
   return false;
 }
 
-// ========== NUCLEAR DRAG UPDATE - RAW ==========
 function updateDrag(pos){
   var p=drag.piece;
   var px = pos.x - drag.grabCol*cell;
@@ -1660,12 +864,14 @@ function updateDrag(pos){
 function onDown(e){
   var pos=getPos(e);
   e.preventDefault();
-  wakeAudio();
   initAudio();
-  if (save.musicOn && !musicTimer) startMusic();
+  debugTouchX = pos.x;
+  debugTouchY = pos.y;
+  debugActive = true;
+
   if (handleButton(pos)) return;
   if (STATE!=='playing') return;
-  if (inside(buttons.pause, pos.x, pos.y)){ Sfx.click(); vib(10); STATE='paused'; return; }
+
   for (var i=0;i<3;i++){
     var p=pieces[i];
     if (!p) continue;
@@ -1674,8 +880,6 @@ function onDown(e){
     if (pos.x>=x0 && pos.x<=x1 && pos.y>=y0 && pos.y<=y1){
       var gc=(pos.x-p.trayX)/p.drawCell;
       var gr=(pos.y-p.trayY)/p.drawCell;
-      gc=Math.max(0, Math.min(p.w, gc));
-      gr=Math.max(0, Math.min(p.h, gr));
       drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false };
       updateDrag(pos);
       Sfx.pick(); vib(8);
@@ -1684,30 +888,22 @@ function onDown(e){
   }
 }
 
-// ========== NUCLEAR: pointermove direkt updateDrag ==========
+// ========== DEBUG: POINTER SAYACI ==========
 function onMove(e){
+  __dbgPtrCount++;
+  var rect = fxCanvasEl.getBoundingClientRect();
+  var x = e.clientX - rect.left;
+  var y = e.clientY - rect.top;
+  debugTouchX = x;
+  debugTouchY = y;
+
   if (STATE!=='playing' || !drag) return;
   e.preventDefault();
-  var rect = fxCanvasEl.getBoundingClientRect();
-  updateDrag({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-}
-
-function setupPuzzleBoard(){
-  grid = [];
-  for (var r=0;r<N;r++){ var row=[]; for (var c=0;c<N;c++) row.push(null); grid.push(row); }
-  var placed = 0, attempts = 0;
-  while (placed < 20 && attempts < 200){
-    attempts++;
-    var r2 = Math.floor(Math.random() * 5);
-    var c2 = Math.floor(Math.random() * N);
-    if (grid[r2][c2] === null){
-      grid[r2][c2] = COLORS[(Math.random()*COLORS.length)|0];
-      placed++;
-    }
-  }
+  updateDrag({x:x, y:y});
 }
 
 function onUp(e){
+  debugActive = false;
   if (STATE!=='playing' || !drag) return;
   e.preventDefault();
   var d=drag;
@@ -1732,13 +928,6 @@ function onUp(e){
     for (var ri=0;ri<lines.rows.length;ri++) for (var cc=0;cc<N;cc++) cleared[lines.rows[ri]*N+cc] = true;
     for (var ci=0;ci<lines.cols.length;ci++) for (var rr=0;rr<N;rr++) cleared[rr*N+lines.cols[ci]] = true;
 
-    for (var fri=0; fri<lines.rows.length; fri++){
-      spawnFlash(boardX, boardY + lines.rows[fri]*cell, boardSize, cell, 'rgba(255,255,255,0.8)');
-    }
-    for (var fci=0; fci<lines.cols.length; fci++){
-      spawnFlash(boardX + lines.cols[fci]*cell, boardY, cell, boardSize, 'rgba(255,255,255,0.8)');
-    }
-
     var count = 0;
     for (var key in cleared){
       if (!cleared.hasOwnProperty(key)) continue;
@@ -1746,7 +935,6 @@ function onUp(e){
       var r2 = (idx/N)|0, c2 = idx%N;
       if (grid[r2][c2]!==null){
         addVanishing(boardX+c2*cell, boardY+r2*cell, grid[r2][c2]);
-        spawnParticles(boardX+c2*cell, boardY+r2*cell, cell, grid[r2][c2]);
         grid[r2][c2]=null;
         count++;
       }
@@ -1756,137 +944,25 @@ function onUp(e){
     var linesCount = lines.rows.length + lines.cols.length;
     var gain = (count*10 + (linesCount-1)*25) * Math.max(1, combo);
     score += gain;
-    scorePulse = 1;
-    boardGlow = 1;
-
-    var comboText = '';
-    if (combo === 2) comboText = 'NICE!';
-    else if (combo === 3) comboText = 'GREAT!';
-    else if (combo === 4) comboText = 'AMAZING!';
-    else if (combo >= 5) comboText = 'INCREDIBLE!';
-
-    spawnFloater(boardX+boardSize/2, boardY+boardSize/2, '+'+gain, '#ffd166', true);
-    if (combo > 1) spawnFloater(boardX+boardSize/2, boardY+boardSize/2+cell*1.8, 'COMBO x'+combo, '#ff9f68', false);
-    if (comboText) spawnFloater(boardX+boardSize/2, boardY+boardSize/2-cell*2.5, comboText, '#5fd3c4', true);
-
-    if (save.mode === 'rush' && combo > 1){
-      var bonusSec = Math.min(combo, 5) * RUSH_COMBO_BONUS_PER_LEVEL;
-      rushTimeLeft += bonusSec * 1000;
-      rushSecondsLeft = Math.max(rushSecondsLeft, Math.ceil(rushTimeLeft / 1000));
-      spawnFloater(boardX+boardSize/2, boardY+boardSize/2-cell*2, '+'+bonusSec+'s', '#5fd3c4', false);
-      Sfx.timeBonus();
-      vib(25);
-    }
-
     shake = Math.min(14, 7+linesCount*2.5);
     Sfx.clear(linesCount);
-    if (combo > 1) Sfx.combo(combo);
     vib(linesCount>1 ? 40 : 25);
   } else {
     if (now-lastClear > 1800) combo = 0;
   }
 
-  if (save.mode === 'puzzle'){
-    puzzleMoves--;
-    if (!pieces[0] && !pieces[1] && !pieces[2] && puzzleMoves > 0) newPieces();
-  } else {
-    if (!pieces[0] && !pieces[1] && !pieces[2]) newPieces();
-  }
+  if (!pieces[0] && !pieces[1] && !pieces[2]) newPieces();
 
   var current = currentBest();
   if (score > current){ setCurrentBest(score); persist(); }
   layoutTray();
-
-  if (save.mode === 'level' && score >= currentTarget()){
-    STATE = 'levelComplete';
-    spawnConfetti();
-    Sfx.levelUp();
-    vib([40,30,40,30,80]);
-    return;
-  }
-
-  if (save.mode === 'puzzle'){
-    if (puzzleMoves <= 0){
-      STATE = 'gameover';
-      save.totalGames++;
-      persist();
-      Sfx.over();
-      vib([100,60,100]);
-      return;
-    }
-    var empty = true;
-    for (var rr2=0;rr2<N;rr2++){
-      for (var cc2=0;cc2<N;cc2++) if (grid[rr2][cc2] !== null){ empty = false; break; }
-      if (!empty) break;
-    }
-    if (empty){
-      score += puzzleMoves * 50;
-      if (score > save.bestPuzzle) save.bestPuzzle = score;
-      STATE = 'gameover';
-      save.totalGames++;
-      persist();
-      Sfx.levelUp();
-      vib([40,30,40,30,120]);
-      return;
-    }
-    if (!anyMove()){
-      STATE = 'gameover';
-      save.totalGames++;
-      persist();
-      Sfx.over();
-      vib([100,60,100]);
-      return;
-    }
-    return;
-  }
-
-  if (save.mode === 'rush'){
-    if (!anyMove()){
-      STATE = 'gameover';
-      save.totalGames++;
-      if (score > save.bestRush) save.bestRush = score;
-      persist();
-      Sfx.over();
-      vib([100,60,100]);
-    }
-    return;
-  }
 
   if (!anyMove()){
     STATE = 'gameover';
     save.totalGames++;
     persist();
     Sfx.over();
-    vib([100,60,100]);
   }
-}
-
-function handleContinue(){
-  var cleared = [];
-  for (var c=0;c<N;c++){
-    var rowsToClear = [0, N-2, N-1];
-    for (var ri=0;ri<rowsToClear.length;ri++){
-      var r = rowsToClear[ri];
-      if (grid[r][c]!==null) cleared.push([r,c]);
-    }
-  }
-  for (var i=0;i<8;i++){
-    var rr = Math.floor(Math.random()*N);
-    var cc = Math.floor(Math.random()*N);
-    if (grid[rr][cc]!==null) cleared.push([rr,cc]);
-  }
-  for (var j=0;j<cleared.length;j++){
-    var r2=cleared[j][0], c2=cleared[j][1];
-    addVanishing(boardX+c2*cell, boardY+r2*cell, grid[r2][c2]);
-    spawnParticles(boardX+c2*cell, boardY+r2*cell, cell, grid[r2][c2]);
-    grid[r2][c2] = null;
-  }
-  continueUsed = true;
-  newPieces();
-  STATE = 'playing';
-  boardGlow = 1;
-  Sfx.levelUp();
-  spawnFloater(W/2, H/2, 'CONTINUE!', '#5fd3c4', true);
 }
 
 fxCanvasEl.addEventListener('pointerdown', function(e){
@@ -1899,20 +975,11 @@ fxCanvasEl.addEventListener('pointercancel', onUp, {passive:false});
 fxCanvasEl.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 
 window.addEventListener('resize', function(){ setTimeout(resize, 80); });
-window.addEventListener('orientationchange', function(){ setTimeout(resize, 180); });
-if (window.visualViewport){
-  window.visualViewport.addEventListener('resize', function(){ setTimeout(resize, 80); });
-}
 
 function startGame(){
   score=0;
   displayScore=0;
   drag=null;
-  particles=[];
-  floaters=[];
-  vanishing=[];
-  confetti=[];
-  flashes=[];
   combo=0;
   lastClear=0;
   shake=0;
@@ -1921,77 +988,46 @@ function startGame(){
   continueUsed = false;
   now = performance.now();
 
-  if (save.mode === 'puzzle'){
-    setupPuzzleBoard();
-    puzzleMoves = PUZZLE_MOVES;
-  } else {
-    grid = [];
-    for (var r=0;r<N;r++){ var row=[]; for (var c=0;c<N;c++) row.push(null); grid.push(row); }
-  }
-
-  if (save.mode === 'rush'){
-    rushSecondsLeft = RUSH_DURATION;
-    rushTimeLeft = RUSH_DURATION * 1000;
-    rushLastTick = now;
-  }
+  grid = [];
+  for (var r=0;r<N;r++){ var row=[]; for (var c=0;c<N;c++) row.push(null); grid.push(row); }
 
   newPieces();
   resize();
   STATE = 'playing';
 }
 
-function updateRushTimer(){
-  if (STATE !== 'playing') return;
-  if (save.mode !== 'rush') return;
-  var delta = now - rushLastTick;
-  rushLastTick = now;
-  rushTimeLeft -= delta;
-  var newSec = Math.max(0, Math.ceil(rushTimeLeft / 1000));
-  if (newSec !== rushSecondsLeft){
-    rushSecondsLeft = newSec;
-    if (rushSecondsLeft <= 5 && rushSecondsLeft > 0) Sfx.tick();
-  }
-  if (rushTimeLeft <= 0){
-    STATE = 'gameover';
-    save.totalGames++;
-    if (score > save.bestRush) save.bestRush = score;
-    persist();
-    Sfx.over();
-    vib([100,60,100]);
-  }
-}
-
-// ========== NUCLEAR LOOP ==========
 function loop(timestamp){
   requestAnimationFrame(loop);
   try {
     now = timestamp || performance.now();
-    updateRushTimer();
+
+    // DEBUG FPS ÖLÇÜMÜ
+    __dbgFrameCount++;
+    if (now - __dbgLastFrame > 500){
+      var fps = Math.round(__dbgFrameCount * 1000 / (now - __dbgLastFrame));
+      __dbgFpsEl.textContent = fps;
+      __dbgFpsEl.className = fps >= 55 ? '' : fps >= 40 ? 'warn' : 'bad';
+      __dbgFrameEl.textContent = (now - __dbgLastFrame) / __dbgFrameCount;
+      __dbgFrameCount = 0;
+      __dbgLastFrame = now;
+
+      var ptrHz = Math.round(__dbgPtrCount * 1000 / 500);
+      __dbgPtrEl.textContent = ptrHz;
+      __dbgPtrEl.className = ptrHz >= 60 ? '' : ptrHz >= 30 ? 'warn' : 'bad';
+      __dbgPtrCount = 0;
+    }
+
     updateEffects();
     render();
   } catch(err){
-    showError('LOOP HATASI: ' + err.message, err.stack || '');
+    console.error('LOOP:', err);
   }
 }
 
 resize();
 requestAnimationFrame(loop);
 
-if (document.readyState === 'complete' || document.readyState === 'interactive'){
-  setTimeout(resize, 100);
-} else {
-  window.addEventListener('DOMContentLoaded', function(){ setTimeout(resize, 100); });
-}
-window.addEventListener('load', function(){ setTimeout(resize, 200); });
-
 })();
-</script>
-<script>
-if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-  window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js').catch(function(){});
-  });
-}
 </script>
 </body>
 </html>
