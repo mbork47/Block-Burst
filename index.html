@@ -748,7 +748,7 @@ function resize(){
   boardSize = cell*N;
   boardX = (W-boardSize)/2;
   boardY = hudH + Math.max(0, (availH-boardSize)/2);
-  LIFT = cell*0.12;
+  LIFT = cell * 0.55;  // <-- Block Blast hissi için büyütüldü
   layoutTray();
 }
 
@@ -1144,17 +1144,49 @@ function renderTray(){
   }
 }
 
+// ========== DRAG RENDER - Block Blast juicy hissi ==========
 function renderDrag(){
   if (!drag) return;
   var p=drag.piece, size=cell;
-  var pc = size;
-  var ox = drag.px;
-  var oy = drag.py;
+
+  // Pickup animasyonu - küçükten büyür (100ms)
+  var age = now - (drag.pickupAt || now);
+  var t = Math.min(1, age / 100);
+  var ease = 1 - (1-t)*(1-t);
+  var baseScale = 0.7 + 0.3 * ease;
+
+  // Valid pozisyonda hafif pulse
+  var validPulse = 0;
+  if (drag.valid){
+    validPulse = 0.04 + Math.sin(now * 0.015) * 0.02;
+  }
+
+  var finalScale = baseScale + validPulse;
+  var pc = size * finalScale;
+
+  // Merkez etrafında scale
+  var cx = drag.px + p.w * size / 2;
+  var cy = drag.py + p.h * size / 2;
+  var ox = cx - p.w * pc / 2;
+  var oy = cy - p.h * pc / 2;
+
   var sprite = getBlockSprite(p.color);
+
+  ctx.save();
   ctx.globalAlpha = 0.98;
+
+  // Tilt uygula - parmağın hızına göre hafif eğilme
+  if (drag.tilt && Math.abs(drag.tilt) > 0.005){
+    ctx.translate(cx, cy);
+    ctx.rotate(drag.tilt);
+    ctx.translate(-cx, -cy);
+  }
+
   for (var i=0;i<p.cells.length;i++){
     ctx.drawImage(sprite, ox+p.cells[i][1]*pc, oy+p.cells[i][0]*pc, pc, pc);
   }
+
+  ctx.restore();
   ctx.globalAlpha = 1;
 }
 
@@ -1453,7 +1485,7 @@ function renderSettings(){
 // ========== OVERLAYS ==========
 function renderPauseOverlay(c){
   var th = T();
-  c.fillStyle='rgba(0,0,0,0.75)';
+  c.fillStyle='rgba(0,0,0,0.88)';
   c.fillRect(0,0,W,H);
   var cardW = W*0.85, cardH = Math.min(H*0.6, 420);
   var cx = (W-cardW)/2, cy = (H-cardH)/2;
@@ -1483,7 +1515,7 @@ function renderPauseOverlay(c){
 
 function renderGameOverOverlay(c){
   var th = T();
-  c.fillStyle='rgba(0,0,0,0.75)';
+  c.fillStyle='rgba(0,0,0,0.88)';
   c.fillRect(0,0,W,H);
   var cardW = W*0.86, cardH = Math.min(H*0.8, 580);
   var cx = (W-cardW)/2, cy = (H-cardH)/2;
@@ -1535,7 +1567,7 @@ function renderGameOverOverlay(c){
 
 function renderLevelCompleteOverlay(c){
   var th = T();
-  c.fillStyle='rgba(0,0,0,0.75)';
+  c.fillStyle='rgba(0,0,0,0.88)';
   c.fillRect(0,0,W,H);
   var cardW = W*0.86, cardH = Math.min(H*0.72, 560);
   var cx = (W-cardW)/2, cy = (H-cardH)/2;
@@ -1665,10 +1697,20 @@ function handleButton(pos){
   return false;
 }
 
+// ========== DRAG UPDATE - Block Blast tilt hissi ==========
 function updateDrag(pos){
   var p=drag.piece;
   var px = pos.x - drag.grabCol*cell;
   var py = pos.y - drag.grabRow*cell - LIFT;
+
+  // Hız bazlı tilt hesabı
+  var dx = px - (drag.lastPx || px);
+  var dy = py - (drag.lastPy || py);
+  var targetTilt = Math.max(-0.15, Math.min(0.15, dx * 0.008));
+  drag.tilt = (drag.tilt || 0) * 0.7 + targetTilt * 0.3;
+  drag.lastPx = px;
+  drag.lastPy = py;
+
   drag.px = px;
   drag.py = py;
   drag.col = Math.round((px - boardX) / cell);
@@ -1695,7 +1737,7 @@ function onDown(e){
       var gr=(pos.y-p.trayY)/p.drawCell;
       gc=Math.max(0, Math.min(p.w, gc));
       gr=Math.max(0, Math.min(p.h, gr));
-      drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false, pickupAt:now, startScale:1 };
+      drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false, pickupAt:now, startScale:0.7, lastPx:pos.x, lastPy:pos.y, tilt:0 };
       updateDrag(pos);
       Sfx.pick(); vib(8);
       return;
@@ -2013,7 +2055,7 @@ window.addEventListener('load', function(){ setTimeout(resize, 200); });
 })();
 </script>
 <script>
-if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+if (typeof navigator !== 'serviceWorker' in navigator) {
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('sw.js').catch(function(){});
   });
