@@ -62,8 +62,8 @@ var bgCanvasEl = document.getElementById('bgCanvas');
 var gameCanvasEl = document.getElementById('gameCanvas');
 var fxCanvasEl = document.getElementById('fxCanvas');
 var bgCtx = bgCanvasEl.getContext('2d');
-var ctx = gameCanvasEl.getContext('2d');       // ana oyun katmanı
-var fxCtx = fxCanvasEl.getContext('2d');        // animasyon katmanı
+var ctx = gameCanvasEl.getContext('2d');
+var fxCtx = fxCanvasEl.getContext('2d');
 
 var N = 8;
 var PAD = 16;
@@ -126,7 +126,7 @@ var drag=null;
 var particles=[], floaters=[], vanishing=[], pulses=[], confetti=[], flashes=[];
 var buttonPressEffects=[];
 var combo=0, lastClear=0, shake=0, boardGlow=0;
-var now=0, lastFrameTime=0;
+var now=0;
 var continueUsed=false;
 var toastMsg=null, toastStart=0;
 
@@ -143,21 +143,17 @@ var buttons = {};
 var SPRITE_SIZE = 64;
 var spriteCache = {};
 
-// Panel cache
 var panelCache = {};
-var panelCacheKey = '';
 
-// Empty board cache
 var emptyBoardCanvas = null;
 var emptyBoardKey = '';
 
-// Title animasyon
 var titleLetters = [];
 var titleReady = false;
 var titleStartTime = 0;
 
-// Game layer dirty flag - statik içerik değişince true
-var gameDirty = true;
+// ========== OPTIMIZASYON: pointermove flood'unu engelle ==========
+var pendingPointer = null;
 
 var SAVE_KEY='blokSave_v14';
 var save = {
@@ -243,7 +239,7 @@ function measureSafeArea(){
   safeBottom = isFinite(b) ? Math.round(b) : 0;
 }
 
-// ========== AUDIO (aynı, dokunmadım) ==========
+// ========== AUDIO ==========
 var audioCtx = null, musicTimer = null, musicStep16 = 0;
 function wakeAudio(){ if (!audioCtx) return; if (audioCtx.state === 'suspended'){ try { audioCtx.resume(); } catch(e){} } }
 function initAudio(){
@@ -408,7 +404,6 @@ function hexToRgb(hex){
   return [parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16)];
 }
 
-// roundRect — hedef ctx alır
 function roundRectOn(c, x, y, w, h, r){
   if (!isFinite(x)||!isFinite(y)||!isFinite(w)||!isFinite(h)) return;
   if (r<0) r=0;
@@ -535,7 +530,7 @@ function getEmptyBoardCanvas(){
   return c;
 }
 
-// ========== BACKGROUND (bg layer) ==========
+// ========== BACKGROUND ==========
 var bgDirty = true;
 function rebuildBackground(){
   bgCanvasEl.width = Math.floor(W*DPR);
@@ -550,7 +545,6 @@ function rebuildBackground(){
   bgCtx.fillStyle = grad;
   bgCtx.fillRect(0,0,W,H);
 
-  // Statik ambient glow (eskiden bg particle'lardı)
   var rgb = hexToRgb(th.accent);
   var rgb2 = hexToRgb(th.accent2);
   var glows = [
@@ -572,7 +566,7 @@ function rebuildBackground(){
   bgDirty = false;
 }
 
-// ========== MENU BLOCK ANIMASYONU (fx layer'da çizilir) ==========
+// ========== MENU BLOCKS ==========
 var menuBlocks = [];
 function initMenuBlocks(){
   menuBlocks = [];
@@ -610,7 +604,7 @@ function drawMenuBlocks(c){
   }
 }
 
-// ========== BUTON ÇİZİMİ ==========
+// ========== BUTON ==========
 function drawButtonOn(c, b, label, color, textColor, fontSize){
   if (!b) return;
   var rad = Math.min(b.h/2, 18);
@@ -642,7 +636,7 @@ function drawButtonOn(c, b, label, color, textColor, fontSize){
 }
 function drawButton(b, label, color, textColor, fontSize){ drawButtonOn(ctx, b, label, color, textColor, fontSize); }
 
-// ========== PIECE / GRID ==========
+// ========== PIECE ==========
 function makePiece(){
   var shape = POOL[(Math.random()*POOL.length)|0];
   var maxR=0, maxC=0;
@@ -650,7 +644,8 @@ function makePiece(){
     if (shape[i][0]>maxR) maxR = shape[i][0];
     if (shape[i][1]>maxC) maxC = shape[i][1];
   }
-  return { cells: shape, color: COLORS[(Math.random()*COLORS.length)|0], w:maxC+1, h:maxR+1, bornAt:now, drawCell:30, trayX:0, trayY:0 };
+  // DEĞİŞİKLİK: bornAt - 300 yaptık, tray'de büyüme animasyonu YOK
+  return { cells: shape, color: COLORS[(Math.random()*COLORS.length)|0], w:maxC+1, h:maxR+1, bornAt: now - 300, drawCell:30, trayX:0, trayY:0 };
 }
 
 function canPlaceAnywhere(p){
@@ -739,7 +734,6 @@ function resize(){
   boardY = hudH + Math.max(0, (availH-boardSize)/2);
   LIFT = cell*0.12;
   layoutTray();
-  gameDirty = true;
 }
 
 function layoutTray(){
@@ -808,7 +802,7 @@ function findLines(){
   return {rows:rows, cols:cols};
 }
 
-// ========== EFFECTS (fx layer'da çizilir) ==========
+// ========== EFFECTS ==========
 function spawnParticles(x,y,size,color){
   var rgb = hexToRgb(color);
   var lightColor = lighten(color, 0.4);
@@ -863,22 +857,16 @@ function updateEffects(){
   if (boardGlow > 0) boardGlow *= 0.92; else boardGlow = 0;
 }
 
-// ========== FX LAYER RENDER ==========
 function renderFX(){
   fxCtx.clearRect(0,0,W,H);
 
-  // Shake uygula sadece fx katmanına (oyun içeriği sallanmasın istersen)
-  var shakeX = 0, shakeY = 0;
   if (shake > 0.3){
-    shakeX = (Math.random()-0.5)*shake;
-    shakeY = (Math.random()-0.5)*shake;
     fxCtx.save();
-    fxCtx.translate(shakeX, shakeY);
+    fxCtx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
   }
 
   var i, t, size, off;
 
-  // Flash
   for (i=0;i<flashes.length;i++){
     var fl = flashes[i];
     t = (now - fl.start) / fl.dur;
@@ -889,7 +877,6 @@ function renderFX(){
   }
   fxCtx.globalAlpha = 1;
 
-  // Vanishing
   for (i=0;i<vanishing.length;i++){
     var v=vanishing[i];
     t=(now-v.start)/v.dur;
@@ -901,7 +888,6 @@ function renderFX(){
   }
   fxCtx.globalAlpha=1;
 
-  // Pulses
   for (i=0;i<pulses.length;i++){
     var pu=pulses[i];
     t=(now-pu.start)/pu.dur;
@@ -916,7 +902,6 @@ function renderFX(){
   }
   fxCtx.globalAlpha=1;
 
-  // Particles
   for (i=0;i<particles.length;i++){
     var pa=particles[i];
     fxCtx.globalAlpha=Math.max(0,pa.life);
@@ -927,7 +912,6 @@ function renderFX(){
   }
   fxCtx.globalAlpha=1;
 
-  // Floaters
   fxCtx.textAlign='center';
   fxCtx.textBaseline='middle';
   for (i=0;i<floaters.length;i++){
@@ -949,7 +933,6 @@ function renderFX(){
   }
   fxCtx.globalAlpha=1;
 
-  // Confetti
   for (i=0;i<confetti.length;i++){
     var cf=confetti[i];
     fxCtx.save();
@@ -968,7 +951,7 @@ function renderFX(){
   } else shake = 0;
 }
 
-// ========== GAME LAYER RENDER (statik) ==========
+// ========== HUD ==========
 function renderHUD(){
   var th = T();
   var labelF = Math.round(W*0.026);
@@ -1052,7 +1035,7 @@ function renderHUD(){
     var timeProg = Math.min(1, rushSecondsLeft / RUSH_DURATION);
     var rushBarColor = rushSecondsLeft <= 10 ? '#ff6b6b' : '#ff9f68';
     ctx.fillStyle=rushBarColor;
-    if (timeProg > 0) roundRect(barX2, barY2, barW2*timeProg, barH2, 4), ctx.fill();
+    if (timeProg > 0) { roundRect(barX2, barY2, barW2*timeProg, barH2, 4); ctx.fill(); }
   } else if (isPuzzle){
     var ly3 = topY + 26 + numF + Math.round(W*0.048);
     var barW3 = W-PAD*2-60, barH3 = 8;
@@ -1065,7 +1048,6 @@ function renderHUD(){
     if (moveProg > 0) { roundRect(barX3, barY3, barW3*moveProg, barH3, 4); ctx.fill(); }
   }
 
-  // Combo pill
   if (combo > 1){
     var pillW = W*0.34, pillH = 36;
     var pillY = topY + 6;
@@ -1087,7 +1069,6 @@ function renderHUD(){
     ctx.restore();
   }
 
-  // Pause button
   var pb = {x: W-PAD-34, y: topY + 8, w: 32, h: 32};
   drawGlassPanel(pb.x, pb.y, pb.w, pb.h, 10);
   ctx.fillStyle=th.text;
@@ -1110,10 +1091,8 @@ function renderBoard(){
   }
   drawGlassPanel(boardX-8, boardY-8, boardSize+16, boardSize+16, 22);
 
-  // Boş hücreler cache'ten
   ctx.drawImage(getEmptyBoardCanvas(), boardX, boardY, boardSize, boardSize);
 
-  // Dolu hücreler
   for (var r=0;r<N;r++) for (var c=0;c<N;c++){
     var v=grid[r][c];
     if (v) drawBlockOn(ctx, boardX+c*cell, boardY+r*cell, cell, v);
@@ -1140,42 +1119,27 @@ function renderTray(){
     if (drag && drag.i===i) continue;
     var dc=p.drawCell;
     if (!isFinite(dc)||dc<=2) continue;
-    var age=now-(p.bornAt||0);
-    var sc=1, al=1;
-    if (age>=0 && age<300){ var t=age/300; sc=0.6+0.4*(1-(1-t)*(1-t)); }
-    if (age>=0 && age<220) al=age/220;
-    if (!isFinite(sc)||sc<=0) sc=1;
-    if (!isFinite(al)||al<=0) continue;
-    ctx.globalAlpha=al;
-    var pc=dc*sc;
+    // DEĞİŞİKLİK: Tray büyüme animasyonu YOK - anında tam boyut
+    var pc = dc;
     var cx=p.trayX+p.w*dc/2, cy=p.trayY+p.h*dc/2;
     var ox=cx-p.w*pc/2, oy=cy-p.h*pc/2;
     for (var j=0;j<p.cells.length;j++) drawBlockOn(ctx, ox+p.cells[j][1]*pc, oy+p.cells[j][0]*pc, pc, p.color);
-    ctx.globalAlpha=1;
   }
 }
 
+// DEĞİŞİKLİK: Shadow kaldırıldı, animasyon yok, direkt 1:1 pozisyon
 function renderDrag(){
   if (!drag) return;
   var p=drag.piece, size=cell;
-  var cx=drag.px+p.w*size/2, cy=drag.py+p.h*size/2;
-  var age=now-(drag.pickupAt||now);
-  var startScale=drag.startScale||0.7;
-  var t=Math.min(1, age/60);
-  var sc=startScale+(1-startScale)*(1-(1-t)*(1-t));
-  var pc=size*sc;
-  var ox=cx-p.w*pc/2, oy=cy-p.h*pc/2;
+  var pc = size; // Animasyon YOK, direkt tam boyut
+  var ox = drag.px;
+  var oy = drag.py;
   var sprite = getBlockSprite(p.color);
-  ctx.globalAlpha=0.98;
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.55)';
-  ctx.shadowBlur = 20;
-  ctx.shadowOffsetY = 8;
+  ctx.globalAlpha = 0.98;
   for (var i=0;i<p.cells.length;i++){
     ctx.drawImage(sprite, ox+p.cells[i][1]*pc, oy+p.cells[i][0]*pc, pc, pc);
   }
-  ctx.restore();
-  ctx.globalAlpha=1;
+  ctx.globalAlpha = 1;
 }
 
 function renderToast(){
@@ -1196,11 +1160,7 @@ function renderToast(){
 
 // ========== MENU ==========
 function renderMenuGameLayer(){
-  // Menü statik içerik burada çizilir (arşiv olarak)
-  // Her frame gerekmiyor aslında ama title animasyonu var, o yüzden
-  // burada basit tutup her frame çiziyoruz ama gradient cache'liyoruz.
   ctx.clearRect(0,0,W,H);
-
   buttons = {};
   var th = T();
   var topOffset = safeTop;
@@ -1208,7 +1168,6 @@ function renderMenuGameLayer(){
   ctx.textAlign='center'; ctx.textBaseline='middle';
   var titleY = topOffset + H*0.15;
 
-  // Title animasyonu
   if (titleStartTime === 0) titleStartTime = now;
   if (!titleReady){
     if (titleLetters.length === 0){
@@ -1475,7 +1434,7 @@ function renderSettings(){
   drawBackButton();
 }
 
-// Overlay'ler fx layer'da çizilir
+// ========== OVERLAY'LER ==========
 function renderPauseOverlay(c){
   var th = T();
   c.fillStyle='rgba(0,0,0,0.75)';
@@ -1597,19 +1556,15 @@ function renderLevelCompleteOverlay(c){
 
 // ========== MASTER RENDER ==========
 function render(){
-  // BG layer
   if (bgDirty) rebuildBackground();
 
-  // FX layer her frame temizle
   fxCtx.setTransform(DPR,0,0,DPR,0,0);
   fxCtx.clearRect(0,0,W,H);
 
-  // Menu blocks fx layer'da
   if (STATE === 'menu' || STATE === 'howto' || STATE === 'settings'){
     drawMenuBlocks(fxCtx);
   }
 
-  // GAME layer
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.clearRect(0,0,W,H);
 
@@ -1626,12 +1581,10 @@ function render(){
     renderToast();
   }
 
-  // Overlay'ler FX layer'da
   if (STATE === 'paused'){ buttons = {}; renderPauseOverlay(fxCtx); }
   if (STATE === 'gameover'){ buttons = {}; renderGameOverOverlay(fxCtx); }
   if (STATE === 'levelComplete'){ buttons = {}; renderLevelCompleteOverlay(fxCtx); }
 
-  // Effects her zaman fx layer'da
   renderFX();
 }
 
@@ -1678,7 +1631,8 @@ function handleButton(pos){
     if (inside(buttons.modePuzzle, pos.x, pos.y)){ triggerButtonPress('PUZZLE'); save.mode='puzzle'; persist(); Sfx.click(); return true; }
     if (inside(buttons.settings, pos.x, pos.y)){ Sfx.click(); STATE='settings'; return true; }
     if (inside(buttons.howto, pos.x, pos.y)){ Sfx.click(); STATE='howto'; return true; }
-    if (inside(buttons.play, pos.x, pos.y)){ triggerButtonPress('PLAY'); initAudio(); Sfx.click(); setTimeout(function(){ startGame(); }, 120); return true; }
+    // DEĞİŞİKLİK: setTimeout YOK - direkt başlat
+    if (inside(buttons.play, pos.x, pos.y)){ triggerButtonPress('PLAY'); initAudio(); Sfx.click(); startGame(); return true; }
   }
   if (STATE==='paused'){
     if (inside(buttons.resume, pos.x, pos.y)){ Sfx.click(); STATE='playing'; return true; }
@@ -1696,15 +1650,16 @@ function handleButton(pos){
   return false;
 }
 
+// DEĞİŞİKLİK: LIFT*2.5 -> LIFT (blok parmağa yakın)
 function updateDrag(pos){
   var p=drag.piece;
-  var px=pos.x-drag.grabCol*cell;
-  var py=pos.y-drag.grabRow*cell-LIFT*2.5;
-  drag.px=px;
-  drag.py=py;
-  drag.col=Math.round((px-boardX)/cell);
-  drag.row=Math.round((py-boardY)/cell);
-  drag.valid=canPlace(p, drag.row, drag.col);
+  var px = pos.x - drag.grabCol*cell;
+  var py = pos.y - drag.grabRow*cell - LIFT;
+  drag.px = px;
+  drag.py = py;
+  drag.col = Math.round((px - boardX) / cell);
+  drag.row = Math.round((py - boardY) / cell);
+  drag.valid = canPlace(p, drag.row, drag.col);
 }
 
 function onDown(e){
@@ -1726,17 +1681,21 @@ function onDown(e){
       var gr=(pos.y-p.trayY)/p.drawCell;
       gc=Math.max(0, Math.min(p.w, gc));
       gr=Math.max(0, Math.min(p.h, gr));
-      drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false, pickupAt:now, startScale:p.drawCell/cell };
+      // DEĞİŞİKLİK: startScale:1 - animasyon YOK, anında tam boyut
+      drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false, pickupAt:now, startScale:1 };
       updateDrag(pos);
       Sfx.pick(); vib(8);
       return;
     }
   }
 }
+
+// DEĞİŞİKLİK: pointermove sadece pozisyonu kaydeder, işlemez
 function onMove(e){
   if (STATE!=='playing' || !drag) return;
   e.preventDefault();
-  updateDrag(getPos(e));
+  var rect = gameCanvasEl.getBoundingClientRect();
+  pendingPointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
 function setupPuzzleBoard(){
@@ -1759,14 +1718,15 @@ function onUp(e){
   e.preventDefault();
   var d=drag;
   drag=null;
+  pendingPointer = null;
 
   if (!d.valid) return;
   var p=d.piece;
 
+  // DEĞİŞİKLİK: addPulse kaldırıldı, sadece grid'e yaz
   for (var i=0;i<p.cells.length;i++){
     var r=d.row+p.cells[i][0], c=d.col+p.cells[i][1];
     grid[r][c] = p.color;
-    addPulse(boardX+c*cell, boardY+r*cell, lighten(p.color,0.4));
   }
   score += p.cells.length;
   scorePulse = 1;
@@ -1937,7 +1897,7 @@ function handleContinue(){
   spawnFloater(W/2, H/2, 'CONTINUE!', '#5fd3c4', true);
 }
 
-// Pointer event'leri fx canvas'a da ekle (üstte o)
+// Pointer event'leri fxCanvas'a (üstte o)
 fxCanvasEl.addEventListener('pointerdown', function(e){
   try { fxCanvasEl.setPointerCapture(e.pointerId); } catch(err){}
   onDown(e);
@@ -1957,6 +1917,7 @@ function startGame(){
   score=0;
   displayScore=0;
   drag=null;
+  pendingPointer=null;
   particles=[];
   floaters=[];
   vanishing=[];
@@ -2011,10 +1972,18 @@ function updateRushTimer(){
   }
 }
 
+// ========== LOOP - pendingPointer'ı burada işle ==========
 function loop(timestamp){
   requestAnimationFrame(loop);
   try {
     now = timestamp || performance.now();
+
+    // DEĞİŞİKLİK: pending pointer varsa bu frame'de işle
+    if (pendingPointer && drag && STATE === 'playing'){
+      updateDrag(pendingPointer);
+      pendingPointer = null;
+    }
+
     updateRushTimer();
     updateEffects();
     render();
