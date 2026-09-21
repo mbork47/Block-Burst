@@ -152,7 +152,6 @@ var titleLetters = [];
 var titleReady = false;
 var titleStartTime = 0;
 
-// ========== OPTIMIZASYON: pointermove flood'unu engelle ==========
 var pendingPointer = null;
 
 var SAVE_KEY='blokSave_v14';
@@ -644,7 +643,6 @@ function makePiece(){
     if (shape[i][0]>maxR) maxR = shape[i][0];
     if (shape[i][1]>maxC) maxC = shape[i][1];
   }
-  // DEĞİŞİKLİK: bornAt - 300 yaptık, tray'de büyüme animasyonu YOK
   return { cells: shape, color: COLORS[(Math.random()*COLORS.length)|0], w:maxC+1, h:maxR+1, bornAt: now - 300, drawCell:30, trayX:0, trayY:0 };
 }
 
@@ -857,9 +855,8 @@ function updateEffects(){
   if (boardGlow > 0) boardGlow *= 0.92; else boardGlow = 0;
 }
 
+// ========== FX LAYER - clearRect YOK! Artık render() başında temizleniyor ==========
 function renderFX(){
-  fxCtx.clearRect(0,0,W,H);
-
   if (shake > 0.3){
     fxCtx.save();
     fxCtx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
@@ -1119,7 +1116,6 @@ function renderTray(){
     if (drag && drag.i===i) continue;
     var dc=p.drawCell;
     if (!isFinite(dc)||dc<=2) continue;
-    // DEĞİŞİKLİK: Tray büyüme animasyonu YOK - anında tam boyut
     var pc = dc;
     var cx=p.trayX+p.w*dc/2, cy=p.trayY+p.h*dc/2;
     var ox=cx-p.w*pc/2, oy=cy-p.h*pc/2;
@@ -1127,11 +1123,10 @@ function renderTray(){
   }
 }
 
-// DEĞİŞİKLİK: Shadow kaldırıldı, animasyon yok, direkt 1:1 pozisyon
 function renderDrag(){
   if (!drag) return;
   var p=drag.piece, size=cell;
-  var pc = size; // Animasyon YOK, direkt tam boyut
+  var pc = size;
   var ox = drag.px;
   var oy = drag.py;
   var sprite = getBlockSprite(p.color);
@@ -1565,6 +1560,9 @@ function render(){
     drawMenuBlocks(fxCtx);
   }
 
+  // FX efektlerini ÖNCE çiz (particle, flash, floaters)
+  renderFX();
+
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.clearRect(0,0,W,H);
 
@@ -1581,11 +1579,10 @@ function render(){
     renderToast();
   }
 
+  // Overlay'ler EN SON (fxCtx'in üstüne)
   if (STATE === 'paused'){ buttons = {}; renderPauseOverlay(fxCtx); }
   if (STATE === 'gameover'){ buttons = {}; renderGameOverOverlay(fxCtx); }
   if (STATE === 'levelComplete'){ buttons = {}; renderLevelCompleteOverlay(fxCtx); }
-
-  renderFX();
 }
 
 function getPos(e){
@@ -1631,7 +1628,6 @@ function handleButton(pos){
     if (inside(buttons.modePuzzle, pos.x, pos.y)){ triggerButtonPress('PUZZLE'); save.mode='puzzle'; persist(); Sfx.click(); return true; }
     if (inside(buttons.settings, pos.x, pos.y)){ Sfx.click(); STATE='settings'; return true; }
     if (inside(buttons.howto, pos.x, pos.y)){ Sfx.click(); STATE='howto'; return true; }
-    // DEĞİŞİKLİK: setTimeout YOK - direkt başlat
     if (inside(buttons.play, pos.x, pos.y)){ triggerButtonPress('PLAY'); initAudio(); Sfx.click(); startGame(); return true; }
   }
   if (STATE==='paused'){
@@ -1650,7 +1646,6 @@ function handleButton(pos){
   return false;
 }
 
-// DEĞİŞİKLİK: LIFT*2.5 -> LIFT (blok parmağa yakın)
 function updateDrag(pos){
   var p=drag.piece;
   var px = pos.x - drag.grabCol*cell;
@@ -1681,7 +1676,6 @@ function onDown(e){
       var gr=(pos.y-p.trayY)/p.drawCell;
       gc=Math.max(0, Math.min(p.w, gc));
       gr=Math.max(0, Math.min(p.h, gr));
-      // DEĞİŞİKLİK: startScale:1 - animasyon YOK, anında tam boyut
       drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false, pickupAt:now, startScale:1 };
       updateDrag(pos);
       Sfx.pick(); vib(8);
@@ -1690,7 +1684,6 @@ function onDown(e){
   }
 }
 
-// DEĞİŞİKLİK: pointermove sadece pozisyonu kaydeder, işlemez
 function onMove(e){
   if (STATE!=='playing' || !drag) return;
   e.preventDefault();
@@ -1723,7 +1716,6 @@ function onUp(e){
   if (!d.valid) return;
   var p=d.piece;
 
-  // DEĞİŞİKLİK: addPulse kaldırıldı, sadece grid'e yaz
   for (var i=0;i<p.cells.length;i++){
     var r=d.row+p.cells[i][0], c=d.col+p.cells[i][1];
     grid[r][c] = p.color;
@@ -1897,7 +1889,6 @@ function handleContinue(){
   spawnFloater(W/2, H/2, 'CONTINUE!', '#5fd3c4', true);
 }
 
-// Pointer event'leri fxCanvas'a (üstte o)
 fxCanvasEl.addEventListener('pointerdown', function(e){
   try { fxCanvasEl.setPointerCapture(e.pointerId); } catch(err){}
   onDown(e);
@@ -1972,13 +1963,11 @@ function updateRushTimer(){
   }
 }
 
-// ========== LOOP - pendingPointer'ı burada işle ==========
 function loop(timestamp){
   requestAnimationFrame(loop);
   try {
     now = timestamp || performance.now();
 
-    // DEĞİŞİKLİK: pending pointer varsa bu frame'de işle
     if (pendingPointer && drag && STATE === 'playing'){
       updateDrag(pendingPointer);
       pendingPointer = null;
@@ -1987,7 +1976,9 @@ function loop(timestamp){
     updateRushTimer();
     updateEffects();
     render();
-  } catch(err){}
+  } catch(err){
+    console.error('LOOP ERROR:', err);
+  }
 }
 
 resize();
