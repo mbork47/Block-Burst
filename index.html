@@ -143,7 +143,7 @@ var safeTop = 0, safeBottom = 0;
 var grid=null, pieces=null;
 var score=0, displayScore=0, scorePulse=0;
 var drag=null;
-var particles=[], floaters=[], vanishing=[], pulses=[], confetti=[], flashes=[];
+var particles=[], floaters=[], vanishing=[], confetti=[], flashes=[];
 var buttonPressEffects=[];
 var combo=0, lastClear=0, shake=0, boardGlow=0;
 var now=0;
@@ -169,8 +169,6 @@ var emptyBoardKey = '';
 var titleLetters = [];
 var titleReady = false;
 var titleStartTime = 0;
-
-var pendingPointer = null;
 
 var SAVE_KEY='blokSave_v14';
 var save = {
@@ -661,7 +659,7 @@ function makePiece(){
     if (shape[i][0]>maxR) maxR = shape[i][0];
     if (shape[i][1]>maxC) maxC = shape[i][1];
   }
-  return { cells: shape, color: COLORS[(Math.random()*COLORS.length)|0], w:maxC+1, h:maxR+1, bornAt: now - 300, drawCell:30, trayX:0, trayY:0 };
+  return { cells: shape, color: COLORS[(Math.random()*COLORS.length)|0], w:maxC+1, h:maxR+1, drawCell:30, trayX:0, trayY:0 };
 }
 
 function canPlaceAnywhere(p){
@@ -748,7 +746,7 @@ function resize(){
   boardSize = cell*N;
   boardX = (W-boardSize)/2;
   boardY = hudH + Math.max(0, (availH-boardSize)/2);
-  LIFT = cell * 0.55;  // <-- Block Blast hissi için büyütüldü
+  LIFT = cell * 0.15;  // <-- ÇOK AZ - parmağın hemen üstünde
   layoutTray();
 }
 
@@ -837,7 +835,6 @@ function spawnParticles(x,y,size,color){
 }
 function spawnFloater(x,y,text,color,big){ floaters.push({x:x,y:y,text:text,color:color,life:1,decay:0.012,big:!!big}); }
 function addVanishing(x,y,color){ vanishing.push({x:x,y:y,color:color,start:now,dur:280}); }
-function addPulse(x,y,color){ pulses.push({x:x,y:y,color:color,start:now,dur:380}); }
 function spawnFlash(x,y,w,h,color){ flashes.push({x:x,y:y,w:w,h:h,color:color,start:now,dur:220}); }
 function spawnConfetti(){
   var colors = COLORS;
@@ -859,18 +856,17 @@ function updateEffects(){
   for (i=particles.length-1;i>=0;i--){ var p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.3; p.vx*=0.98; p.life-=p.decay; if (p.life<=0) particles.splice(i,1); }
   for (i=floaters.length-1;i>=0;i--){ var f=floaters[i]; f.y-=1.6; f.life-=f.decay; if (f.life<=0) floaters.splice(i,1); }
   for (i=vanishing.length-1;i>=0;i--) if (now-vanishing[i].start>vanishing[i].dur) vanishing.splice(i,1);
-  for (i=pulses.length-1;i>=0;i--) if (now-pulses[i].start>pulses[i].dur) pulses.splice(i,1);
   for (i=flashes.length-1;i>=0;i--) if (now-flashes[i].start>flashes[i].dur) flashes.splice(i,1);
   for (i=confetti.length-1;i>=0;i--){ var c=confetti[i]; c.x+=c.vx; c.y+=c.vy; c.vy+=0.28; c.vx*=0.99; c.rot+=c.vr; c.life-=c.decay; if (c.life<=0 || c.y>H+40) confetti.splice(i,1); }
   for (i=buttonPressEffects.length-1;i>=0;i--) if (now-buttonPressEffects[i].start>120) buttonPressEffects.splice(i,1);
 
   if (displayScore !== score){
     var diff = score - displayScore;
-    if (Math.abs(diff) > 0.5) displayScore += diff*0.18;
+    if (Math.abs(diff) > 0.5) displayScore += diff*0.25;
     else displayScore = score;
   }
-  if (scorePulse > 0) scorePulse *= 0.9; else scorePulse = 0;
-  if (boardGlow > 0) boardGlow *= 0.92; else boardGlow = 0;
+  if (scorePulse > 0) scorePulse *= 0.85; else scorePulse = 0;
+  if (boardGlow > 0) boardGlow *= 0.88; else boardGlow = 0;
 }
 
 // ========== FX LAYER ==========
@@ -903,20 +899,6 @@ function renderFX(){
     off=(cell-size)/2;
     fxCtx.globalAlpha=1-t;
     drawBlockOn(fxCtx, v.x+off, v.y+off, size, v.color);
-  }
-  fxCtx.globalAlpha=1;
-
-  for (i=0;i<pulses.length;i++){
-    var pu=pulses[i];
-    t=(now-pu.start)/pu.dur;
-    if (t>=1) continue;
-    var r=cell*0.4+t*cell*1.6;
-    fxCtx.globalAlpha=(1-t)*0.8;
-    fxCtx.strokeStyle=pu.color;
-    fxCtx.lineWidth=4*(1-t);
-    fxCtx.beginPath();
-    fxCtx.arc(pu.x+cell/2, pu.y+cell/2, r, 0, Math.PI*2);
-    fxCtx.stroke();
   }
   fxCtx.globalAlpha=1;
 
@@ -1144,49 +1126,15 @@ function renderTray(){
   }
 }
 
-// ========== DRAG RENDER - Block Blast juicy hissi ==========
+// ========== DRAG RENDER - RAW Block Blast ==========
 function renderDrag(){
   if (!drag) return;
   var p=drag.piece, size=cell;
-
-  // Pickup animasyonu - küçükten büyür (100ms)
-  var age = now - (drag.pickupAt || now);
-  var t = Math.min(1, age / 100);
-  var ease = 1 - (1-t)*(1-t);
-  var baseScale = 0.7 + 0.3 * ease;
-
-  // Valid pozisyonda hafif pulse
-  var validPulse = 0;
-  if (drag.valid){
-    validPulse = 0.04 + Math.sin(now * 0.015) * 0.02;
-  }
-
-  var finalScale = baseScale + validPulse;
-  var pc = size * finalScale;
-
-  // Merkez etrafında scale
-  var cx = drag.px + p.w * size / 2;
-  var cy = drag.py + p.h * size / 2;
-  var ox = cx - p.w * pc / 2;
-  var oy = cy - p.h * pc / 2;
-
   var sprite = getBlockSprite(p.color);
-
-  ctx.save();
   ctx.globalAlpha = 0.98;
-
-  // Tilt uygula - parmağın hızına göre hafif eğilme
-  if (drag.tilt && Math.abs(drag.tilt) > 0.005){
-    ctx.translate(cx, cy);
-    ctx.rotate(drag.tilt);
-    ctx.translate(-cx, -cy);
-  }
-
   for (var i=0;i<p.cells.length;i++){
-    ctx.drawImage(sprite, ox+p.cells[i][1]*pc, oy+p.cells[i][0]*pc, pc, pc);
+    ctx.drawImage(sprite, drag.px+p.cells[i][1]*size, drag.py+p.cells[i][0]*size, size, size);
   }
-
-  ctx.restore();
   ctx.globalAlpha = 1;
 }
 
@@ -1697,20 +1645,11 @@ function handleButton(pos){
   return false;
 }
 
-// ========== DRAG UPDATE - Block Blast tilt hissi ==========
+// ========== NUCLEAR DRAG UPDATE - RAW ==========
 function updateDrag(pos){
   var p=drag.piece;
   var px = pos.x - drag.grabCol*cell;
   var py = pos.y - drag.grabRow*cell - LIFT;
-
-  // Hız bazlı tilt hesabı
-  var dx = px - (drag.lastPx || px);
-  var dy = py - (drag.lastPy || py);
-  var targetTilt = Math.max(-0.15, Math.min(0.15, dx * 0.008));
-  drag.tilt = (drag.tilt || 0) * 0.7 + targetTilt * 0.3;
-  drag.lastPx = px;
-  drag.lastPy = py;
-
   drag.px = px;
   drag.py = py;
   drag.col = Math.round((px - boardX) / cell);
@@ -1737,7 +1676,7 @@ function onDown(e){
       var gr=(pos.y-p.trayY)/p.drawCell;
       gc=Math.max(0, Math.min(p.w, gc));
       gr=Math.max(0, Math.min(p.h, gr));
-      drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false, pickupAt:now, startScale:0.7, lastPx:pos.x, lastPy:pos.y, tilt:0 };
+      drag={ i:i, piece:p, grabCol:gc, grabRow:gr, px:pos.x, py:pos.y, col:-99, row:-99, valid:false };
       updateDrag(pos);
       Sfx.pick(); vib(8);
       return;
@@ -1745,11 +1684,12 @@ function onDown(e){
   }
 }
 
+// ========== NUCLEAR: pointermove direkt updateDrag ==========
 function onMove(e){
   if (STATE!=='playing' || !drag) return;
   e.preventDefault();
   var rect = fxCanvasEl.getBoundingClientRect();
-  pendingPointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  updateDrag({ x: e.clientX - rect.left, y: e.clientY - rect.top });
 }
 
 function setupPuzzleBoard(){
@@ -1772,7 +1712,6 @@ function onUp(e){
   e.preventDefault();
   var d=drag;
   drag=null;
-  pendingPointer = null;
 
   if (!d.valid) return;
   var p=d.piece;
@@ -1969,11 +1908,9 @@ function startGame(){
   score=0;
   displayScore=0;
   drag=null;
-  pendingPointer=null;
   particles=[];
   floaters=[];
   vanishing=[];
-  pulses=[];
   confetti=[];
   flashes=[];
   combo=0;
@@ -2024,16 +1961,11 @@ function updateRushTimer(){
   }
 }
 
+// ========== NUCLEAR LOOP ==========
 function loop(timestamp){
   requestAnimationFrame(loop);
   try {
     now = timestamp || performance.now();
-
-    if (pendingPointer && drag && STATE === 'playing'){
-      updateDrag(pendingPointer);
-      pendingPointer = null;
-    }
-
     updateRushTimer();
     updateEffects();
     render();
@@ -2055,7 +1987,7 @@ window.addEventListener('load', function(){ setTimeout(resize, 200); });
 })();
 </script>
 <script>
-if (typeof navigator !== 'serviceWorker' in navigator) {
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('sw.js').catch(function(){});
   });
